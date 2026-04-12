@@ -25,6 +25,27 @@ SilentAim = TaskAPI.Categories.Combat:CreateModule({
 	Tooltip = "This is a test module."
 })
 
+local SilentAima
+SilentAima = TaskAPI.Categories.Combat:CreateModule({
+	Name = "Testa",
+	Function = function(callback)
+		print(callback, "module state")
+
+		if callback then
+			SilentAima:Clean(Instance.new("Part"))
+
+			repeat
+				print("repeat loop!")
+				task.wait(1)
+			until (not SilentAima.Enabled)
+		end
+	end,
+	ExtraText = function()
+		return "Test"
+	end,
+	Tooltip = "This is a test module."
+})
+
 local LocalPlayer = Players.LocalPlayer
 local DEFAULT_SPEED = 16
 local BOOST_SPEED = 32
