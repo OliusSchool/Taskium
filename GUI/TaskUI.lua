@@ -90,7 +90,10 @@ local function updateCategorySize(category)
 	local baseHeight = 40
 	local moduleHeight = 35
 	local visibleModuleRows = math.max(1, moduleCount)
-	local totalHeight = baseHeight + (visibleModuleRows * moduleHeight)
+	local defaultHeight = category.DefaultSize.Y.Offset
+	local contentHeight = baseHeight + (visibleModuleRows * moduleHeight)
+	local totalHeight = math.max(defaultHeight, contentHeight)
+	local bodyHeight = totalHeight - baseHeight
 
 	category.MainFrame.Size = UDim2.new(
 		category.MainFrame.Size.X.Scale,
@@ -99,7 +102,7 @@ local function updateCategorySize(category)
 		totalHeight
 	)
 
-	category.BodyFrame.Size = UDim2.new(1, 0, 0, visibleModuleRows * moduleHeight)
+	category.BodyFrame.Size = UDim2.new(1, 0, 0, bodyHeight)
 	category.ModulesHolder.Size = UDim2.new(1, 0, 0, moduleCount * moduleHeight)
 	updateShadowSize(category)
 end
@@ -218,6 +221,7 @@ function TaskAPI:CreateCategory(categoryData)
 		Name = categoryData.Name,
 		Position = categoryPosition,
 		AnchorPoint = categoryAnchorPoint,
+		DefaultSize = categoryData.Size or UDim2.new(0, 165, 0, 82),
 		MainFrame = mainFrame,
 		TaskFrame = mainFrame,
 		SEffect = sEffect,
