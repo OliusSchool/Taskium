@@ -90,6 +90,7 @@ local function createCategoryFrame(options)
 	categoryFrame.Name = "CategoryFrame"
 	categoryFrame.Size = UDim2.new(1, 0, 0, 40)
 	categoryFrame.Position = UDim2.new(0, 0, 0, 0)
+	categoryFrame.Active = true
 	categoryFrame.BackgroundTransparency = 1
 	categoryFrame.Image = "rbxassetid://126645359069961"
 	categoryFrame.ZIndex = 3
@@ -98,6 +99,7 @@ local function createCategoryFrame(options)
 	local categoryLabel = Instance.new("TextLabel")
 	categoryLabel.Name = "CategoryText"
 	categoryLabel.Size = UDim2.new(1, 0, 1, 0)
+	categoryLabel.Active = false
 	categoryLabel.BackgroundTransparency = 1
 	categoryLabel.Text = options.Name or "Other"
 	categoryLabel.TextSize = 18
