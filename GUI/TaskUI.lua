@@ -1,45 +1,67 @@
 local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
+local InputService = game:GetService("UserInputService")
 
 local LPlayer = Players.LocalPlayer
 local PlayerGui = LPlayer:WaitForChild("PlayerGui")
+
+local TaskAPI = {
+	Categories = {},
+	Version = { "1.0.0" }
+}
+
+local TaskAssets = {
+	CategoryFrame = "rbxassetid://126645359069961",
+	Shadow = "rbxassetid://125043055375567"
+}
+
+getgenv().TaskClient = getgenv().TaskClient or {}
+getgenv().TaskClient.API = TaskAPI
 
 if PlayerGui:FindFirstChild("MainUI") then
 	PlayerGui.MainUI:Destroy()
 end
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MainUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = PlayerGui
+local TaskGui = Instance.new("ScreenGui")
+TaskGui.Name = "MainUI"
+TaskGui.Enabled = true
+TaskGui.ResetOnSpawn = false
+TaskGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+TaskGui.Parent = PlayerGui
 
-local TaskUI = {}
-TaskUI.ScreenGui = ScreenGui
-TaskUI.Categories = {}
+TaskAPI.ScreenGui = TaskGui
 
-local function createCategoryFrame(options)
-	local mainFrame = Instance.new("Frame")
-	mainFrame.Name = options.Name or "Category"
-	mainFrame.Size = options.Size or UDim2.new(0, 165, 0, 82)
-	mainFrame.Position = options.Position or UDim2.new(0.5, -82, 0.5, -41)
-	mainFrame.BackgroundColor3 = options.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
-	mainFrame.BorderSizePixel = 0
-	mainFrame.ZIndex = 2
-	mainFrame.Parent = ScreenGui
+function TaskAPI:CreateCategory(categoryData)
+	if not categoryData or type(categoryData.Name) ~= "string" or categoryData.Name == "" then
+		error("TaskAPI:CreateCategory requires a category name")
+	end
 
-	local mainFrameCorner = Instance.new("UICorner")
-	mainFrameCorner.CornerRadius = UDim.new(0, 10)
-	mainFrameCorner.Parent = mainFrame
+	for _, existingCategory in ipairs(self.Categories) do
+		if existingCategory.Name == categoryData.Name then
+			error(("TaskAPI category '%s' already exists"):format(categoryData.Name))
+		end
+	end
 
-	local sEffect = Instance.new("ImageLabel")
-	sEffect.Name = "SEffect"
-	sEffect.Size = UDim2.new(0, 190, 0, 105)
-	sEffect.Position = UDim2.new(0, -13, 0, -11)
-	sEffect.BackgroundTransparency = 1
-	sEffect.Image = "rbxassetid://125043055375567"
-	sEffect.ZIndex = 1
-	sEffect.Parent = mainFrame
+	local taskFrame = Instance.new("Frame")
+	taskFrame.Name = "TaskFrame_" .. categoryData.Name
+	taskFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
+	taskFrame.Position = categoryData.Position or UDim2.new(0.5, -82, 0.5, -41)
+	taskFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
+	taskFrame.BorderSizePixel = 0
+	taskFrame.ZIndex = 2
+	taskFrame.Parent = TaskGui
+
+	local taskFrameCorner = Instance.new("UICorner")
+	taskFrameCorner.CornerRadius = UDim.new(0, 10)
+	taskFrameCorner.Parent = taskFrame
+
+	local shadowEffect = Instance.new("ImageLabel")
+	shadowEffect.Name = "SEffect"
+	shadowEffect.Size = UDim2.new(0, 190, 0, 105)
+	shadowEffect.Position = UDim2.new(0, -13, 0, -11)
+	shadowEffect.BackgroundTransparency = 1
+	shadowEffect.Image = TaskAssets.Shadow
+	shadowEffect.ZIndex = 1
+	shadowEffect.Parent = taskFrame
 
 	local categoryFrame = Instance.new("ImageLabel")
 	categoryFrame.Name = "CategoryFrame"
@@ -47,16 +69,16 @@ local function createCategoryFrame(options)
 	categoryFrame.Position = UDim2.new(0, 0, 0, 0)
 	categoryFrame.Active = true
 	categoryFrame.BackgroundTransparency = 1
-	categoryFrame.Image = "rbxassetid://126645359069961"
+	categoryFrame.Image = TaskAssets.CategoryFrame
 	categoryFrame.ZIndex = 3
-	categoryFrame.Parent = mainFrame
+	categoryFrame.Parent = taskFrame
 
 	local categoryLabel = Instance.new("TextLabel")
 	categoryLabel.Name = "CategoryText"
 	categoryLabel.Size = UDim2.new(1, 0, 1, 0)
 	categoryLabel.Active = false
 	categoryLabel.BackgroundTransparency = 1
-	categoryLabel.Text = options.Name or "Other"
+	categoryLabel.Text = categoryData.Name
 	categoryLabel.TextSize = 18
 	categoryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	categoryLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -72,13 +94,13 @@ local function createCategoryFrame(options)
 	moduleFrame.BackgroundColor3 = Color3.fromHex("#111111")
 	moduleFrame.BorderSizePixel = 0
 	moduleFrame.ZIndex = 3
-	moduleFrame.Parent = mainFrame
+	moduleFrame.Parent = taskFrame
 
 	local moduleLabel = Instance.new("TextLabel")
 	moduleLabel.Name = "ModuleText"
 	moduleLabel.Size = UDim2.new(1, 0, 1, 0)
 	moduleLabel.BackgroundTransparency = 1
-	moduleLabel.Text = options.ModuleName or "Module"
+	moduleLabel.Text = categoryData.ModuleName or "Module"
 	moduleLabel.TextSize = 16
 	moduleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	moduleLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -98,7 +120,7 @@ local function createCategoryFrame(options)
 
 		dragging = true
 		dragStart = input.Position
-		startPosition = mainFrame.Position
+		startPosition = taskFrame.Position
 	end)
 
 	categoryFrame.InputEnded:Connect(function(input)
@@ -107,17 +129,13 @@ local function createCategoryFrame(options)
 		end
 	end)
 
-	UIS.InputChanged:Connect(function(input)
-		if not dragging then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+	InputService.InputChanged:Connect(function(input)
+		if not dragging or input.UserInputType ~= Enum.UserInputType.MouseMovement then
 			return
 		end
 
 		local delta = input.Position - dragStart
-		mainFrame.Position = UDim2.new(
+		taskFrame.Position = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
 			startPosition.Y.Scale,
@@ -125,24 +143,20 @@ local function createCategoryFrame(options)
 		)
 	end)
 
-	return {
-		MainFrame = mainFrame,
+	local category = {
+		Name = categoryData.Name,
+		TaskFrame = taskFrame,
 		CategoryFrame = categoryFrame,
 		CategoryLabel = categoryLabel,
 		ModuleFrame = moduleFrame,
 		ModuleLabel = moduleLabel
 	}
-end
 
-function TaskUI:CreateCategory(options)
-	options = options or {}
-
-	local category = createCategoryFrame(options)
 	table.insert(self.Categories, category)
 
 	return category
 end
 
-getgenv().TaskUI = TaskUI
+getgenv().TaskAPI = TaskAPI
 
-return TaskUI
+return TaskAPI

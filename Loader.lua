@@ -11,7 +11,7 @@ local function loadRemote(path)
 	return chunk()
 end
 
-local TaskUI = loadRemote("GUI/TaskUI.lua")
+local TaskAPI = loadRemote("GUI/TaskUI.lua")
 loadRemote("GUI/Categories.lua")
 
-return TaskUI
+return TaskAPI
