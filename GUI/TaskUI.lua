@@ -88,12 +88,10 @@ end
 
 local function updateCategorySize(category)
 	local moduleCount = #category.ModuleList
-	local baseHeight = 40
 	local moduleHeight = 35
-	local visibleModuleRows = math.max(1, moduleCount)
 	local defaultHeight = category.DefaultSize.Y.Offset
-	local contentHeight = baseHeight + (visibleModuleRows * moduleHeight)
-	local totalHeight = math.max(defaultHeight, contentHeight)
+	local extraModules = math.max(0, moduleCount - 1)
+	local totalHeight = defaultHeight + (extraModules * moduleHeight)
 
 	category.MainFrame.Size = UDim2.new(
 		category.MainFrame.Size.X.Scale,
