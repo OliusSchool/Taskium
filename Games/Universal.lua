@@ -45,3 +45,24 @@ SilentAima = TaskAPI.Categories.Combat:CreateModule({
 	end,
 	Tooltip = "This is a test module."
 })
+
+local SilentAimab
+SilentAimab = TaskAPI.Categories.Combat:CreateModule({
+	Name = "Testabc",
+	Function = function(callback)
+		print(callback, "module state")
+
+		if callback then
+			SilentAimab:Clean(Instance.new("Part"))
+
+			repeat
+				print("repeat loop!")
+				task.wait(1)
+			until (not SilentAimab.Enabled)
+		end
+	end,
+	ExtraText = function()
+		return "Test"
+	end,
+	Tooltip = "This is a test module."
+})
