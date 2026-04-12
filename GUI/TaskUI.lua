@@ -47,15 +47,16 @@ function TaskAPI:CreateCategory(categoryData)
 
 	local taskFrame = Instance.new("Frame")
 	taskFrame.Name = "TaskFrame_" .. categoryData.Name
-	taskFrame.Size = categoryData.Size or UDim2.new(0, 200, 0, 82)
+	taskFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
 	taskFrame.AnchorPoint = Vector2.new(0.5, 0)
 	taskFrame.Position = categoryData.Position or UDim2.new(0.5, 0, 0.2, 0)
-	taskFrame.BackgroundTransparency = 1
+	taskFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
+	taskFrame.BorderSizePixel = 0
 	taskFrame.ZIndex = 2
 	taskFrame.Parent = TaskGui
 
 	local taskFrameCorner = Instance.new("UICorner")
-	taskFrameCorner.CornerRadius = UDim.new(0, 20)
+	taskFrameCorner.CornerRadius = UDim.new(0, 10)
 	taskFrameCorner.Parent = taskFrame
 
 	local shadowEffect = Instance.new("ImageLabel")
