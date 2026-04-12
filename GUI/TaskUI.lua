@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local InputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
 
 local LPlayer = Players.LocalPlayer
 local PlayerGui = LPlayer:WaitForChild("PlayerGui")
@@ -16,13 +17,25 @@ if PlayerGui:FindFirstChild("MainUI") then
 	PlayerGui.MainUI:Destroy()
 end
 
+if Lighting:FindFirstChild("TaskUIBlur") then
+	Lighting.TaskUIBlur:Destroy()
+end
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MainUI"
+ScreenGui.Enabled = false
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
 
+local BlurEffect = Instance.new("BlurEffect")
+BlurEffect.Name = "TaskUIBlur"
+BlurEffect.Size = 20
+BlurEffect.Enabled = false
+BlurEffect.Parent = Lighting
+
 TaskAPI.ScreenGui = ScreenGui
+TaskAPI.BlurEffect = BlurEffect
 
 function TaskAPI:CreateCategory(categoryData)
 	if not categoryData or type(categoryData.Name) ~= "string" or categoryData.Name == "" then
@@ -168,5 +181,16 @@ function TaskAPI:CreateCategory(categoryData)
 end
 
 getgenv().TaskAPI = TaskAPI
+
+InputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.RightShift then
+		ScreenGui.Enabled = not ScreenGui.Enabled
+		BlurEffect.Enabled = ScreenGui.Enabled
+	end
+end)
 
 return TaskAPI
