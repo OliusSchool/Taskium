@@ -18,51 +18,6 @@ local TaskUI = {}
 TaskUI.ScreenGui = ScreenGui
 TaskUI.Categories = {}
 
-local function makeDraggable(frame, dragHandle)
-	local dragging = false
-	local dragInput
-	local dragStart
-	local startPosition
-
-	local function updatePosition(input)
-		local delta = input.Position - dragStart
-		frame.Position = UDim2.new(
-			startPosition.X.Scale,
-			startPosition.X.Offset + delta.X,
-			startPosition.Y.Scale,
-			startPosition.Y.Offset + delta.Y
-		)
-	end
-
-	dragHandle.InputBegan:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-			return
-		end
-
-		dragging = true
-		dragStart = input.Position
-		startPosition = frame.Position
-
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end)
-
-	dragHandle.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement then
-			dragInput = input
-		end
-	end)
-
-	UIS.InputChanged:Connect(function(input)
-		if dragging and input == dragInput then
-			updatePosition(input)
-		end
-	end)
-end
-
 local function createCategoryFrame(options)
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = options.Name or "Category"
@@ -110,8 +65,6 @@ local function createCategoryFrame(options)
 	categoryLabel.ZIndex = 4
 	categoryLabel.Parent = categoryFrame
 
-	makeDraggable(mainFrame, categoryFrame)
-
 	local moduleFrame = Instance.new("Frame")
 	moduleFrame.Name = "Module"
 	moduleFrame.Size = UDim2.new(1, 0, 0, 35)
@@ -133,6 +86,44 @@ local function createCategoryFrame(options)
 	moduleLabel.Font = Enum.Font.GothamBold
 	moduleLabel.ZIndex = 4
 	moduleLabel.Parent = moduleFrame
+
+	local dragging = false
+	local dragStart
+	local startPosition
+
+	categoryFrame.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+			return
+		end
+
+		dragging = true
+		dragStart = input.Position
+		startPosition = mainFrame.Position
+	end)
+
+	categoryFrame.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	UIS.InputChanged:Connect(function(input)
+		if not dragging then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+			return
+		end
+
+		local delta = input.Position - dragStart
+		mainFrame.Position = UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
+	end)
 
 	return {
 		MainFrame = mainFrame,
