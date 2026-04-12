@@ -47,7 +47,7 @@ SilentAima = TaskAPI.Categories.Combat:CreateModule({
 })
 
 local SilentAimab
-SilentAimab = TaskAPI.Categories.Combat:CreateModule({
+SilentAimab = TaskAPI.Categories.Movement:CreateModule({
 	Name = "Testabc",
 	Function = function(callback)
 		print(callback, "module state")
