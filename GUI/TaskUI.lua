@@ -93,7 +93,7 @@ local function updateCategorySize(category)
 	local defaultHeight = category.DefaultSize.Y.Offset
 	local contentHeight = baseHeight + (visibleModuleRows * moduleHeight)
 	local totalHeight = math.max(defaultHeight, contentHeight)
-	local bodyHeight = math.max(0, totalHeight - baseHeight - 2)
+	local bodyHeight = math.max(0, totalHeight - baseHeight)
 
 	category.MainFrame.Size = UDim2.new(
 		category.MainFrame.Size.X.Scale,
@@ -126,6 +126,7 @@ local function refreshModuleDisplay(module)
 	end
 
 	module.ExtraLabel.Text = extraText
+	module.Button.Text = module.Name
 end
 
 function TaskAPI:CreateCategory(categoryData)
@@ -197,16 +198,12 @@ function TaskAPI:CreateCategory(categoryData)
 
 	local bodyFrame = Instance.new("Frame")
 	bodyFrame.Name = "BodyFrame"
-	bodyFrame.Size = UDim2.new(1, 0, 0, 33)
+	bodyFrame.Size = UDim2.new(1, 0, 0, 35)
 	bodyFrame.Position = UDim2.new(0, 0, 0, 40)
 	bodyFrame.BackgroundColor3 = categoryData.ModuleBackgroundColor3 or Color3.fromRGB(17, 17, 17)
 	bodyFrame.BorderSizePixel = 0
 	bodyFrame.ZIndex = 3
 	bodyFrame.Parent = mainFrame
-
-	local bodyFrameCorner = Instance.new("UICorner")
-	bodyFrameCorner.CornerRadius = UDim.new(0, 10)
-	bodyFrameCorner.Parent = bodyFrame
 
 	local modulesHolder = Instance.new("Frame")
 	modulesHolder.Name = "ModulesHolder"
@@ -252,7 +249,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 		local moduleButton = Instance.new("TextButton")
 		moduleButton.Name = moduleData.Name
-		moduleButton.Size = UDim2.new(1, 0, 0, 33)
+		moduleButton.Size = UDim2.new(1, 0, 0, 35)
 		moduleButton.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
 		moduleButton.BorderSizePixel = 0
 		moduleButton.AutoButtonColor = false
@@ -272,8 +269,9 @@ function TaskAPI:CreateCategory(categoryData)
 
 		local extraLabel = Instance.new("TextLabel")
 		extraLabel.Name = "ExtraText"
-		extraLabel.Size = UDim2.new(0.45, 0, 1, 0)
-		extraLabel.Position = UDim2.new(0.55, 0, 0, 0)
+		extraLabel.Size = UDim2.new(0, 60, 1, 0)
+		extraLabel.AnchorPoint = Vector2.new(1, 0)
+		extraLabel.Position = UDim2.new(1, -10, 0, 0)
 		extraLabel.BackgroundTransparency = 1
 		extraLabel.Text = ""
 		extraLabel.TextSize = 14
@@ -318,12 +316,22 @@ function TaskAPI:CreateCategory(categoryData)
 			refreshModuleDisplay(self)
 
 			if self.Function then
-				task.spawn(function()
-					local ok, err = pcall(self.Function, state)
+				if self.Enabled then
+					task.spawn(function()
+						local ok, err = pcall(self.Function, true)
+						if not ok then
+							warn(("TaskAPI module '%s' failed: %s"):format(self.Name, tostring(err)))
+							self.Enabled = false
+							refreshModuleDisplay(self)
+							self:Cleanup()
+						end
+					end)
+				else
+					local ok, err = pcall(self.Function, false)
 					if not ok then
-						warn(("TaskAPI module '%s' failed: %s"):format(self.Name, tostring(err)))
+						warn(("TaskAPI module '%s' disable failed: %s"):format(self.Name, tostring(err)))
 					end
-				end)
+				end
 			end
 
 			if not self.Enabled then
