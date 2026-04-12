@@ -6,7 +6,7 @@ end
 
 local SilentAim
 SilentAim = TaskAPI.Categories.Combat:CreateModule({
-	Name = "Test",
+	Name = "Testa",
 	Function = function(callback)
 		print(callback, "module state")
 
