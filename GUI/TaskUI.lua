@@ -33,16 +33,24 @@ function TaskAPI:CreateCategory(categoryData)
 		error("TaskAPI:CreateCategory requires Position to be a UDim2")
 	end
 
+	if categoryData.AnchorPoint and typeof(categoryData.AnchorPoint) ~= "Vector2" then
+		error("TaskAPI:CreateCategory requires AnchorPoint to be a Vector2")
+	end
+
 	for _, existingCategory in ipairs(self.Categories) do
 		if existingCategory.Name == categoryData.Name then
 			error(("TaskAPI category '%s' already exists"):format(categoryData.Name))
 		end
 	end
 
+	local categoryPosition = categoryData.Position or UDim2.new(0, 0, 0, 0)
+	local categoryAnchorPoint = categoryData.AnchorPoint or Vector2.new(0, 0)
+
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = "MainFrame_" .. categoryData.Name
 	mainFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
-	mainFrame.Position = categoryData.Position or UDim2.new(0.5, -82, 0.5, -41)
+	mainFrame.AnchorPoint = categoryAnchorPoint
+	mainFrame.Position = categoryPosition
 	mainFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
 	mainFrame.BorderSizePixel = 0
 	mainFrame.ZIndex = 2
@@ -143,6 +151,8 @@ function TaskAPI:CreateCategory(categoryData)
 
 	local category = {
 		Name = categoryData.Name,
+		Position = categoryPosition,
+		AnchorPoint = categoryAnchorPoint,
 		MainFrame = mainFrame,
 		TaskFrame = mainFrame,
 		SEffect = sEffect,
