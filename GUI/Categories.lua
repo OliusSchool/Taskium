@@ -11,7 +11,7 @@ TaskAPI:CreateCategory({
 
 TaskAPI:CreateCategory({ 
 	Name = "Movement",
-	Position = UDim2.new(0.25, 0, 0.2, 0)
+	Position = UDim2.new(0.3, 0, 0.2, 0)
 })
 
 TaskAPI:CreateCategory({ 
@@ -21,7 +21,7 @@ TaskAPI:CreateCategory({
 
 TaskAPI:CreateCategory({ 
 	Name = "Player",
-	Position = UDim2.new(0.65, 0, 0.2, 0)
+	Position = UDim2.new(0.6, 0, 0.2, 0)
 })
 
 TaskAPI:CreateCategory({ 
