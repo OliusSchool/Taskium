@@ -9,11 +9,6 @@ local TaskAPI = {
 	Version = { "1.0.0" }
 }
 
-local TaskAssets = {
-	CategoryFrame = "rbxassetid://126645359069961",
-	Shadow = "rbxassetid://125043055375567"
-}
-
 getgenv().TaskClient = getgenv().TaskClient or {}
 getgenv().TaskClient.API = TaskAPI
 
@@ -21,14 +16,13 @@ if PlayerGui:FindFirstChild("MainUI") then
 	PlayerGui.MainUI:Destroy()
 end
 
-local TaskGui = Instance.new("ScreenGui")
-TaskGui.Name = "MainUI"
-TaskGui.Enabled = true
-TaskGui.ResetOnSpawn = false
-TaskGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-TaskGui.Parent = PlayerGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MainUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
 
-TaskAPI.ScreenGui = TaskGui
+TaskAPI.ScreenGui = ScreenGui
 
 function TaskAPI:CreateCategory(categoryData)
 	if not categoryData or type(categoryData.Name) ~= "string" or categoryData.Name == "" then
@@ -45,50 +39,48 @@ function TaskAPI:CreateCategory(categoryData)
 		end
 	end
 
-	local taskFrame = Instance.new("Frame")
-	taskFrame.Name = "TaskFrame_" .. categoryData.Name
-	taskFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
-	taskFrame.AnchorPoint = Vector2.new(0.5, 0)
-	taskFrame.Position = categoryData.Position or UDim2.new(0.5, 0, 0.2, 0)
-	taskFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
-	taskFrame.BorderSizePixel = 0
-	taskFrame.ZIndex = 2
-	taskFrame.Parent = TaskGui
+	local mainFrame = Instance.new("Frame")
+	mainFrame.Name = "MainFrame_" .. categoryData.Name
+	mainFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
+	mainFrame.Position = categoryData.Position or UDim2.new(0.5, -82, 0.5, -41)
+	mainFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
+	mainFrame.BorderSizePixel = 0
+	mainFrame.ZIndex = 2
+	mainFrame.Parent = ScreenGui
 
-	local taskFrameCorner = Instance.new("UICorner")
-	taskFrameCorner.CornerRadius = UDim.new(0, 10)
-	taskFrameCorner.Parent = taskFrame
+	local mainFrameCorner = Instance.new("UICorner")
+	mainFrameCorner.CornerRadius = UDim.new(0, 10)
+	mainFrameCorner.Parent = mainFrame
 
-	local shadowEffect = Instance.new("ImageLabel")
-	shadowEffect.Name = "SEffect"
-	shadowEffect.Size = UDim2.new(0, 190, 0, 105)
-	shadowEffect.Position = UDim2.new(0, -13, 0, -11)
-	shadowEffect.BackgroundTransparency = 1
-	shadowEffect.Image = TaskAssets.Shadow
-	shadowEffect.ZIndex = 1
-	shadowEffect.Parent = taskFrame
+	local sEffect = Instance.new("ImageLabel")
+	sEffect.Name = "SEffect"
+	sEffect.Size = UDim2.new(0, 190, 0, 105)
+	sEffect.Position = UDim2.new(0, -13, 0, -11)
+	sEffect.BackgroundTransparency = 1
+	sEffect.Image = "rbxassetid://125043055375567"
+	sEffect.ZIndex = 1
+	sEffect.Parent = mainFrame
 
 	local categoryFrame = Instance.new("ImageLabel")
 	categoryFrame.Name = "CategoryFrame"
 	categoryFrame.Size = UDim2.new(1, 0, 0, 40)
-	categoryFrame.AnchorPoint = Vector2.new(0.5, 0)
-	categoryFrame.Position = UDim2.new(0.5, 0, 0, 0)
+	categoryFrame.Position = UDim2.new(0, 0, 0, 0)
 	categoryFrame.Active = true
 	categoryFrame.BackgroundTransparency = 1
-	categoryFrame.Image = TaskAssets.CategoryFrame
-	categoryFrame.ImageColor3 = categoryData.CategoryColor3 or Color3.fromRGB(11, 11, 11)
+	categoryFrame.Image = categoryData.CategoryImage or "rbxassetid://126645359069961"
+	categoryFrame.ImageColor3 = categoryData.CategoryColor3 or Color3.fromRGB(255, 255, 255)
 	categoryFrame.ZIndex = 3
-	categoryFrame.Parent = taskFrame
+	categoryFrame.Parent = mainFrame
 
 	local categoryLabel = Instance.new("TextLabel")
 	categoryLabel.Name = "CategoryText"
 	categoryLabel.Size = UDim2.new(1, 0, 1, 0)
-	categoryLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-	categoryLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
 	categoryLabel.BackgroundTransparency = 1
 	categoryLabel.Text = categoryData.Name
 	categoryLabel.TextSize = 18
 	categoryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	categoryLabel.TextXAlignment = Enum.TextXAlignment.Center
+	categoryLabel.TextYAlignment = Enum.TextYAlignment.Center
 	categoryLabel.Font = Enum.Font.GothamBold
 	categoryLabel.ZIndex = 4
 	categoryLabel.Parent = categoryFrame
@@ -100,7 +92,7 @@ function TaskAPI:CreateCategory(categoryData)
 	moduleFrame.BackgroundColor3 = categoryData.ModuleBackgroundColor3 or Color3.fromRGB(17, 17, 17)
 	moduleFrame.BorderSizePixel = 0
 	moduleFrame.ZIndex = 3
-	moduleFrame.Parent = taskFrame
+	moduleFrame.Parent = mainFrame
 
 	local moduleLabel = Instance.new("TextLabel")
 	moduleLabel.Name = "ModuleText"
@@ -126,7 +118,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 		dragging = true
 		dragStart = input.Position
-		startPosition = taskFrame.Position
+		startPosition = mainFrame.Position
 	end)
 
 	categoryFrame.InputEnded:Connect(function(input)
@@ -141,7 +133,7 @@ function TaskAPI:CreateCategory(categoryData)
 		end
 
 		local delta = input.Position - dragStart
-		taskFrame.Position = UDim2.new(
+		mainFrame.Position = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
 			startPosition.Y.Scale,
@@ -151,7 +143,9 @@ function TaskAPI:CreateCategory(categoryData)
 
 	local category = {
 		Name = categoryData.Name,
-		TaskFrame = taskFrame,
+		MainFrame = mainFrame,
+		TaskFrame = mainFrame,
+		SEffect = sEffect,
 		CategoryFrame = categoryFrame,
 		CategoryLabel = categoryLabel,
 		ModuleFrame = moduleFrame,
