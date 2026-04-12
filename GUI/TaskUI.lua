@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
 
 local LPlayer = Players.LocalPlayer
 local PlayerGui = LPlayer:WaitForChild("PlayerGui")
@@ -16,6 +17,51 @@ ScreenGui.Parent = PlayerGui
 local TaskUI = {}
 TaskUI.ScreenGui = ScreenGui
 TaskUI.Categories = {}
+
+local function makeDraggable(frame, dragHandle)
+	local dragging = false
+	local dragInput
+	local dragStart
+	local startPosition
+
+	local function updatePosition(input)
+		local delta = input.Position - dragStart
+		frame.Position = UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
+	end
+
+	dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+			return
+		end
+
+		dragging = true
+		dragStart = input.Position
+		startPosition = frame.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end)
+
+	dragHandle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			dragInput = input
+		end
+	end)
+
+	UIS.InputChanged:Connect(function(input)
+		if dragging and input == dragInput then
+			updatePosition(input)
+		end
+	end)
+end
 
 local function createCategoryFrame(options)
 	local mainFrame = Instance.new("Frame")
@@ -61,6 +107,8 @@ local function createCategoryFrame(options)
 	categoryLabel.Font = Enum.Font.GothamBold
 	categoryLabel.ZIndex = 4
 	categoryLabel.Parent = categoryFrame
+
+	makeDraggable(mainFrame, categoryFrame)
 
 	local moduleFrame = Instance.new("Frame")
 	moduleFrame.Name = "Module"
