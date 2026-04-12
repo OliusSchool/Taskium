@@ -204,6 +204,10 @@ function TaskAPI:CreateCategory(categoryData)
 	bodyFrame.ZIndex = 3
 	bodyFrame.Parent = mainFrame
 
+	local bodyFrameCorner = Instance.new("UICorner")
+	bodyFrameCorner.CornerRadius = UDim.new(0, 10)
+	bodyFrameCorner.Parent = bodyFrame
+
 	local modulesHolder = Instance.new("Frame")
 	modulesHolder.Name = "ModulesHolder"
 	modulesHolder.Size = UDim2.new(1, 0, 0, 0)
