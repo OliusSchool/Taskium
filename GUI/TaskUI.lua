@@ -89,7 +89,8 @@ local function updateCategorySize(category)
 	local moduleCount = #category.ModuleList
 	local baseHeight = 40
 	local moduleHeight = 35
-	local totalHeight = baseHeight + (moduleCount * moduleHeight)
+	local visibleModuleRows = math.max(1, moduleCount)
+	local totalHeight = baseHeight + (visibleModuleRows * moduleHeight)
 
 	category.MainFrame.Size = UDim2.new(
 		category.MainFrame.Size.X.Scale,
@@ -98,6 +99,7 @@ local function updateCategorySize(category)
 		totalHeight
 	)
 
+	category.BodyFrame.Size = UDim2.new(1, 0, 0, visibleModuleRows * moduleHeight)
 	category.ModulesHolder.Size = UDim2.new(1, 0, 0, moduleCount * moduleHeight)
 	updateShadowSize(category)
 end
@@ -145,7 +147,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = "MainFrame_" .. categoryData.Name
-	mainFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 40)
+	mainFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
 	mainFrame.AnchorPoint = categoryAnchorPoint
 	mainFrame.Position = categoryPosition
 	mainFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
@@ -159,7 +161,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 	local sEffect = Instance.new("ImageLabel")
 	sEffect.Name = "SEffect"
-	sEffect.Size = UDim2.new(0, 190, 0, 63)
+	sEffect.Size = UDim2.new(0, 190, 0, 105)
 	sEffect.Position = UDim2.new(0, -13, 0, -11)
 	sEffect.BackgroundTransparency = 1
 	sEffect.Image = "rbxassetid://125043055375567"
@@ -190,13 +192,22 @@ function TaskAPI:CreateCategory(categoryData)
 	categoryLabel.ZIndex = 4
 	categoryLabel.Parent = categoryFrame
 
+	local bodyFrame = Instance.new("Frame")
+	bodyFrame.Name = "BodyFrame"
+	bodyFrame.Size = UDim2.new(1, 0, 0, 35)
+	bodyFrame.Position = UDim2.new(0, 0, 0, 40)
+	bodyFrame.BackgroundColor3 = categoryData.ModuleBackgroundColor3 or Color3.fromRGB(17, 17, 17)
+	bodyFrame.BorderSizePixel = 0
+	bodyFrame.ZIndex = 3
+	bodyFrame.Parent = mainFrame
+
 	local modulesHolder = Instance.new("Frame")
 	modulesHolder.Name = "ModulesHolder"
 	modulesHolder.Size = UDim2.new(1, 0, 0, 0)
-	modulesHolder.Position = UDim2.new(0, 0, 0, 40)
+	modulesHolder.Position = UDim2.new(0, 0, 0, 0)
 	modulesHolder.BackgroundTransparency = 1
-	modulesHolder.ZIndex = 3
-	modulesHolder.Parent = mainFrame
+	modulesHolder.ZIndex = 4
+	modulesHolder.Parent = bodyFrame
 
 	local modulesLayout = Instance.new("UIListLayout")
 	modulesLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -212,6 +223,7 @@ function TaskAPI:CreateCategory(categoryData)
 		SEffect = sEffect,
 		CategoryFrame = categoryFrame,
 		CategoryLabel = categoryLabel,
+		BodyFrame = bodyFrame,
 		ModulesHolder = modulesHolder,
 		ModuleList = {},
 		Modules = {}
