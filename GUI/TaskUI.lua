@@ -44,8 +44,8 @@ function TaskAPI:CreateCategory(categoryData)
 	local taskFrame = Instance.new("Frame")
 	taskFrame.Name = "TaskFrame_" .. categoryData.Name
 	taskFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
-	taskFrame.AnchorPoint = Vector2.new(0.5, 0)
-	taskFrame.Position = categoryData.Position or UDim2.new(0.5, -82, 0.5, -41)
+	taskFrame.AnchorPoint = Vector2.new(0, 0)
+	taskFrame.Position = categoryData.Position or UDim2.new(0.5, 0, 0.5, 0)
 	taskFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
 	taskFrame.BorderSizePixel = 0
 	taskFrame.ZIndex = 2
@@ -67,8 +67,8 @@ function TaskAPI:CreateCategory(categoryData)
 	local categoryFrame = Instance.new("ImageLabel")
 	categoryFrame.Name = "CategoryFrame"
 	categoryFrame.Size = UDim2.new(1, 0, 0, 40)
-	categoryFrame.AnchorPoint = Vector2.new(0.5, 0)
-	categoryFrame.Position = UDim2.new(0.5, 0, 0, 0)
+	categoryFrame.AnchorPoint = Vector2.new(0, 0)
+	categoryFrame.Position = UDim2.new(0, 0, 0, 0)
 	categoryFrame.Active = true
 	categoryFrame.BackgroundTransparency = 1
 	categoryFrame.Image = TaskAssets.CategoryFrame
