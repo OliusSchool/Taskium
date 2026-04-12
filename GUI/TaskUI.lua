@@ -83,6 +83,7 @@ local function updateShadowSize(category)
 	local heightOffset = category.MainFrame.Size.Y.Offset
 
 	category.SEffect.Size = UDim2.new(0, widthOffset + 25, 0, heightOffset + 23)
+	category.ContainerFrame.Size = category.MainFrame.Size
 end
 
 local function updateCategorySize(category)
@@ -147,16 +148,25 @@ function TaskAPI:CreateCategory(categoryData)
 	local categoryPosition = categoryData.Position or UDim2.new(0, 0, 0, 0)
 	local categoryAnchorPoint = categoryData.AnchorPoint or Vector2.new(0, 0)
 
+	local containerFrame = Instance.new("Frame")
+	containerFrame.Name = "CategoryContainer_" .. categoryData.Name
+	containerFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
+	containerFrame.AnchorPoint = categoryAnchorPoint
+	containerFrame.Position = categoryPosition
+	containerFrame.BackgroundTransparency = 1
+	containerFrame.BorderSizePixel = 0
+	containerFrame.ZIndex = 1
+	containerFrame.Parent = ScreenGui
+
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = "MainFrame_" .. categoryData.Name
 	mainFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
-	mainFrame.AnchorPoint = categoryAnchorPoint
-	mainFrame.Position = categoryPosition
+	mainFrame.Position = UDim2.new(0, 0, 0, 0)
 	mainFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
 	mainFrame.BorderSizePixel = 0
 	mainFrame.ClipsDescendants = true
 	mainFrame.ZIndex = 2
-	mainFrame.Parent = ScreenGui
+	mainFrame.Parent = containerFrame
 
 	local mainFrameCorner = Instance.new("UICorner")
 	mainFrameCorner.CornerRadius = UDim.new(0, 10)
@@ -169,7 +179,7 @@ function TaskAPI:CreateCategory(categoryData)
 	sEffect.BackgroundTransparency = 1
 	sEffect.Image = "rbxassetid://125043055375567"
 	sEffect.ZIndex = 1
-	sEffect.Parent = mainFrame
+	sEffect.Parent = containerFrame
 
 	local categoryFrame = Instance.new("ImageLabel")
 	categoryFrame.Name = "CategoryFrame"
@@ -213,8 +223,9 @@ function TaskAPI:CreateCategory(categoryData)
 		Position = categoryPosition,
 		AnchorPoint = categoryAnchorPoint,
 		DefaultSize = categoryData.Size or UDim2.new(0, 165, 0, 82),
+		ContainerFrame = containerFrame,
 		MainFrame = mainFrame,
-		TaskFrame = mainFrame,
+		TaskFrame = containerFrame,
 		SEffect = sEffect,
 		CategoryFrame = categoryFrame,
 		CategoryLabel = categoryLabel,
@@ -364,13 +375,13 @@ function TaskAPI:CreateCategory(categoryData)
 
 		dragging = true
 		dragStart = input.Position
-		startPosition = mainFrame.Position
+		startPosition = containerFrame.Position
 	end)
 
 	categoryFrame.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = false
-			category.Position = mainFrame.Position
+			category.Position = containerFrame.Position
 		end
 	end)
 
@@ -380,13 +391,13 @@ function TaskAPI:CreateCategory(categoryData)
 		end
 
 		local delta = input.Position - dragStart
-		mainFrame.Position = UDim2.new(
+		containerFrame.Position = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
 			startPosition.Y.Scale,
 			startPosition.Y.Offset + delta.Y
 		)
-		category.Position = mainFrame.Position
+		category.Position = containerFrame.Position
 	end)
 
 	self.Categories[category.Name] = category
