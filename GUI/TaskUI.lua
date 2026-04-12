@@ -93,7 +93,7 @@ local function updateCategorySize(category)
 	local defaultHeight = category.DefaultSize.Y.Offset
 	local contentHeight = baseHeight + (visibleModuleRows * moduleHeight)
 	local totalHeight = math.max(defaultHeight, contentHeight)
-	local bodyHeight = totalHeight - baseHeight
+	local bodyHeight = math.max(0, totalHeight - baseHeight - 2)
 
 	category.MainFrame.Size = UDim2.new(
 		category.MainFrame.Size.X.Scale,
@@ -197,7 +197,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 	local bodyFrame = Instance.new("Frame")
 	bodyFrame.Name = "BodyFrame"
-	bodyFrame.Size = UDim2.new(1, 0, 0, 35)
+	bodyFrame.Size = UDim2.new(1, 0, 0, 33)
 	bodyFrame.Position = UDim2.new(0, 0, 0, 40)
 	bodyFrame.BackgroundColor3 = categoryData.ModuleBackgroundColor3 or Color3.fromRGB(17, 17, 17)
 	bodyFrame.BorderSizePixel = 0
@@ -252,7 +252,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 		local moduleButton = Instance.new("TextButton")
 		moduleButton.Name = moduleData.Name
-		moduleButton.Size = UDim2.new(1, 0, 0, 35)
+		moduleButton.Size = UDim2.new(1, 0, 0, 33)
 		moduleButton.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
 		moduleButton.BorderSizePixel = 0
 		moduleButton.AutoButtonColor = false
