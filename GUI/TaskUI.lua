@@ -35,6 +35,10 @@ function TaskAPI:CreateCategory(categoryData)
 		error("TaskAPI:CreateCategory requires a category name")
 	end
 
+	if categoryData.Position and typeof(categoryData.Position) ~= "UDim2" then
+		error("TaskAPI:CreateCategory requires Position to be a UDim2")
+	end
+
 	for _, existingCategory in ipairs(self.Categories) do
 		if existingCategory.Name == categoryData.Name then
 			error(("TaskAPI category '%s' already exists"):format(categoryData.Name))
@@ -43,16 +47,15 @@ function TaskAPI:CreateCategory(categoryData)
 
 	local taskFrame = Instance.new("Frame")
 	taskFrame.Name = "TaskFrame_" .. categoryData.Name
-	taskFrame.Size = categoryData.Size or UDim2.new(0, 165, 0, 82)
-	taskFrame.AnchorPoint = Vector2.new(0, 0)
-	taskFrame.Position = categoryData.Position or UDim2.new(0.5, 0, 0.5, 0)
-	taskFrame.BackgroundColor3 = categoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
-	taskFrame.BorderSizePixel = 0
+	taskFrame.Size = categoryData.Size or UDim2.new(0, 200, 0, 82)
+	taskFrame.AnchorPoint = Vector2.new(0.5, 0)
+	taskFrame.Position = categoryData.Position or UDim2.new(0.5, 0, 0.2, 0)
+	taskFrame.BackgroundTransparency = 1
 	taskFrame.ZIndex = 2
 	taskFrame.Parent = TaskGui
 
 	local taskFrameCorner = Instance.new("UICorner")
-	taskFrameCorner.CornerRadius = UDim.new(0, 10)
+	taskFrameCorner.CornerRadius = UDim.new(0, 20)
 	taskFrameCorner.Parent = taskFrame
 
 	local shadowEffect = Instance.new("ImageLabel")
@@ -67,24 +70,24 @@ function TaskAPI:CreateCategory(categoryData)
 	local categoryFrame = Instance.new("ImageLabel")
 	categoryFrame.Name = "CategoryFrame"
 	categoryFrame.Size = UDim2.new(1, 0, 0, 40)
-	categoryFrame.AnchorPoint = Vector2.new(0, 0)
-	categoryFrame.Position = UDim2.new(0, 0, 0, 0)
+	categoryFrame.AnchorPoint = Vector2.new(0.5, 0)
+	categoryFrame.Position = UDim2.new(0.5, 0, 0, 0)
 	categoryFrame.Active = true
 	categoryFrame.BackgroundTransparency = 1
 	categoryFrame.Image = TaskAssets.CategoryFrame
+	categoryFrame.ImageColor3 = categoryData.CategoryColor3 or Color3.fromRGB(11, 11, 11)
 	categoryFrame.ZIndex = 3
 	categoryFrame.Parent = taskFrame
 
 	local categoryLabel = Instance.new("TextLabel")
 	categoryLabel.Name = "CategoryText"
 	categoryLabel.Size = UDim2.new(1, 0, 1, 0)
-	categoryLabel.Active = false
+	categoryLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	categoryLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
 	categoryLabel.BackgroundTransparency = 1
 	categoryLabel.Text = categoryData.Name
 	categoryLabel.TextSize = 18
 	categoryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	categoryLabel.TextXAlignment = Enum.TextXAlignment.Center
-	categoryLabel.TextYAlignment = Enum.TextYAlignment.Center
 	categoryLabel.Font = Enum.Font.GothamBold
 	categoryLabel.ZIndex = 4
 	categoryLabel.Parent = categoryFrame
@@ -93,7 +96,7 @@ function TaskAPI:CreateCategory(categoryData)
 	moduleFrame.Name = "Module"
 	moduleFrame.Size = UDim2.new(1, 0, 0, 35)
 	moduleFrame.Position = UDim2.new(0, 0, 0, 40)
-	moduleFrame.BackgroundColor3 = Color3.fromHex("#111111")
+	moduleFrame.BackgroundColor3 = categoryData.ModuleBackgroundColor3 or Color3.fromRGB(17, 17, 17)
 	moduleFrame.BorderSizePixel = 0
 	moduleFrame.ZIndex = 3
 	moduleFrame.Parent = taskFrame
