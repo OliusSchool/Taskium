@@ -5,13 +5,28 @@ if not TaskAPI then
 end
 
 TaskAPI:CreateCategory({
-	Name = "Other",
-	Position = UDim2.new(0.9, 0, 0.2, 0)
+	Name = "Combat",
+	Position = UDim2.new(0.15, 0, 0.2, 0)
 })
 
-TaskAPI:CreateCategory({
-	Name = "Combat",
-	Position = UDim2.new(0.7, 0, 0.2, 0)
+TaskAPI:CreateCategory({ 
+	Name = "Movement",
+	Position = UDim2.new(0.25, 0, 0.2, 0)
+})
+
+TaskAPI:CreateCategory({ 
+	Name = "Render",
+	Position = UDim2.new(0.45, 0, 0.2, 0)
+})
+
+TaskAPI:CreateCategory({ 
+	Name = "Player",
+	Position = UDim2.new(0.65, 0, 0.2, 0)
+})
+
+TaskAPI:CreateCategory({ 
+	Name = "Other",
+	Position = UDim2.new(0.75, 0, 0.2, 0)
 })
 
 return TaskAPI
