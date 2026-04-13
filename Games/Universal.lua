@@ -1,22 +1,23 @@
 local TaskAPI = getgenv().TaskAPI or (getgenv().TaskClient and getgenv().TaskClient.API)
+local TaskClient = getgenv().TaskClient
 
-if not TaskAPI or not TaskAPI.Categories or not TaskAPI.Categories.Combat then
-	error("Combat category was not loaded before Games/Universal.lua")
+if not TaskAPI or not TaskAPI.Categories or not TaskAPI.Categories.Combat or not TaskAPI.Categories.Other then
+	error("Required categories were not loaded before Games/Universal.lua")
 end
 
-local SilentAim
-SilentAim = TaskAPI.Categories.Combat:CreateModule({
-	Name = "Test",
-	Function = function(callback)
-		print(callback, "module state")
+local TestModule
+TestModule = TaskAPI.Categories.Combat:CreateModule({
+	Name = "TestModule",
+	Function = function(enabled)
+		print(enabled, "module state")
 
-		if callback then
-			SilentAim:Clean(Instance.new("Part"))
+		if enabled then
+			TestModule:Clean(Instance.new("Part"))
 
 			repeat
 				print("repeat loop!")
 				task.wait(1)
-			until (not SilentAim.Enabled)
+			until (not TestModule.Enabled)
 		end
 	end,
 	ExtraText = function()
@@ -25,44 +26,43 @@ SilentAim = TaskAPI.Categories.Combat:CreateModule({
 	Tooltip = "This is a test module."
 })
 
-local SilentAima
-SilentAima = TaskAPI.Categories.Combat:CreateModule({
-	Name = "Testab",
-	Function = function(callback)
-		print(callback, "module state")
-
-		if callback then
-			SilentAima:Clean(Instance.new("Part"))
-
-			repeat
-				print("repeat loop!")
-				task.wait(1)
-			until (not SilentAima.Enabled)
+local Update
+Update = TaskAPI.Categories.Other:CreateModule({
+	Name = "Update",
+	Function = function(enabled)
+		if not enabled then
+			return
 		end
+
+		if not TaskClient or type(TaskClient.SyncTaskiumFiles) ~= "function" then
+			error("Taskium updater is not available")
+		end
+
+		local report = TaskClient.SyncTaskiumFiles(true)
+		local createdFolders = #report.CreatedFolders
+		local createdFiles = #report.CreatedFiles
+		local updatedFiles = #report.UpdatedFiles
+
+		if createdFolders > 0 then
+			TaskAPI.Notification("Taskium", ("Created %d folder(s)."):format(createdFolders), 3, "Info")
+		end
+
+		if createdFiles > 0 or updatedFiles > 0 then
+			TaskAPI.Notification("Taskium", ("Updated %d file(s), added %d file(s)."):format(updatedFiles, createdFiles), 4, "Success")
+		else
+			TaskAPI.Notification("Taskium", "No file updates found.", 3, "Info")
+		end
+
+		task.defer(function()
+			if Update and Update.Enabled then
+				Update:SetEnabled(false)
+			end
+		end)
 	end,
 	ExtraText = function()
-		return "Test"
+		return "Sync"
 	end,
-	Tooltip = "This is a test module."
+	Tooltip = "Downloads updated Taskium files from GitHub."
 })
 
-local SilentAimab
-SilentAimab = TaskAPI.Categories.Movement:CreateModule({
-	Name = "I'm Speed",
-	Function = function(callback)
-		print(callback, "module state")
-
-		if callback then
-			SilentAimab:Clean(Instance.new("Part"))
-
-			repeat
-				print("repeat loop!")
-				task.wait(1)
-			until (not SilentAimab.Enabled)
-		end
-	end,
-	ExtraText = function()
-		return "Test"
-	end,
-	Tooltip = "This is a test module."
-})
+return TaskAPI

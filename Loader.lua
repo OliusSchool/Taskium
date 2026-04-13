@@ -4,6 +4,8 @@ local RawGitUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
 local RepoApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
 
 local RootFolder = "Taskium"
+getgenv().TaskClient = getgenv().TaskClient or {}
+
 local Folders = {
 	"Taskium",
 	"Taskium/GUI",
@@ -53,21 +55,62 @@ for _, folder in ipairs(Folders) do
 	end
 end
 
-local function DownloadFile(path)
+local function CreateSyncReport()
+	return {
+		CreatedFolders = {},
+		CreatedFiles = {},
+		UpdatedFiles = {},
+		FailedFiles = {}
+	}
+end
+
+local function EnsureFolder(path, report)
+	if not isfolder(path) then
+		makefolder(path)
+		if report then
+			table.insert(report.CreatedFolders, path)
+		end
+	end
+end
+
+local function DownloadFile(path, forceUpdate, report)
 	local url = RawGitUrl .. path
 	local savePath = RootFolder .. "/" .. path
-	if isfile(savePath) then
+	local fileExists = isfile(savePath)
+
+	if fileExists and not forceUpdate then
 		return true
 	end
 
 	local response = HttpRequest(url)
 
 	if response.StatusCode == 200 then
-		writefile(savePath, response.Body)
+		local shouldWrite = true
+		local oldContent = nil
+
+		if fileExists then
+			oldContent = readfile(savePath)
+			shouldWrite = oldContent ~= response.Body
+		end
+
+		if shouldWrite then
+			writefile(savePath, response.Body)
+			if report then
+				if fileExists then
+					table.insert(report.UpdatedFiles, savePath)
+				else
+					table.insert(report.CreatedFiles, savePath)
+				end
+			end
+		end
+
 		return true
 	end
 
 	warn("Failed to download: " .. url)
+	if report then
+		table.insert(report.FailedFiles, savePath)
+	end
 	return false
 end
 
@@ -92,17 +135,33 @@ local function GetDirectoryContents(folder)
 	return files
 end
 
-for _, folder in ipairs(DownloadFolders) do
-	local files = GetDirectoryContents(folder)
+local function SyncTaskiumFiles(forceUpdate)
+	local report = CreateSyncReport()
 
-	if #files > 0 then
-		for _, file in ipairs(files) do
-			DownloadFile(file)
-		end
-	else
-		warn("No files found in directory: " .. folder)
+	for _, folder in ipairs(Folders) do
+		EnsureFolder(folder, report)
 	end
+
+	for _, folder in ipairs(DownloadFolders) do
+		local files = GetDirectoryContents(folder)
+
+		if #files > 0 then
+			for _, file in ipairs(files) do
+				DownloadFile(file, forceUpdate, report)
+			end
+		else
+			warn("No files found in directory: " .. folder)
+		end
+	end
+
+	return report
 end
+
+getgenv().TaskClient.SyncTaskiumFiles = SyncTaskiumFiles
+getgenv().TaskClient.LastSyncReport = nil
+
+local InitialSyncReport = SyncTaskiumFiles(false)
+getgenv().TaskClient.LastSyncReport = InitialSyncReport
 
 local function ExecuteFile(path)
 	local success, content = pcall(readfile, path)
@@ -127,6 +186,18 @@ if TaskAPI then
 
 	ExecuteFile("Taskium/GUI/Categories.lua")
 	ExecuteFile("Taskium/Games/Universal.lua")
+
+	local createdFolderCount = #InitialSyncReport.CreatedFolders
+	local createdFileCount = #InitialSyncReport.CreatedFiles
+	local updatedFileCount = #InitialSyncReport.UpdatedFiles
+
+	if createdFolderCount > 0 then
+		TaskAPI.Notification("Taskium", ("Created %d folder(s)."):format(createdFolderCount), 3, "Info")
+	end
+
+	if createdFileCount > 0 or updatedFileCount > 0 then
+		TaskAPI.Notification("Taskium", ("Files synced: %d new, %d updated."):format(createdFileCount, updatedFileCount), 3, "Success")
+	end
 
 	if getgenv().TaskClient and getgenv().TaskClient.API then
 		TaskAPI.Notification("Taskium", "Taskium initialized successfully!", 3, "Success")
