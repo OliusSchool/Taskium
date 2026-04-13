@@ -66,15 +66,15 @@ NotificationGui.Parent = PlayerGui
 local NotificationsContainer = Instance.new("Frame")
 NotificationsContainer.Name = "NotificationsContainer"
 NotificationsContainer.Size = UDim2.new(0, 290, 0.4, 0)
-NotificationsContainer.AnchorPoint = Vector2.new(0, 1)
-NotificationsContainer.Position = UDim2.new(0, 20, 1, -20)
+NotificationsContainer.AnchorPoint = Vector2.new(1, 1)
+NotificationsContainer.Position = UDim2.new(1, -20, 1, -20)
 NotificationsContainer.BackgroundTransparency = 1
 NotificationsContainer.Parent = NotificationGui
 
 local NotificationListLayout = Instance.new("UIListLayout")
 NotificationListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 NotificationListLayout.Padding = UDim.new(0, 10)
-NotificationListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+NotificationListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
 NotificationListLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
 NotificationListLayout.Parent = NotificationsContainer
 
