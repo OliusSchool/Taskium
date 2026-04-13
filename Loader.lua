@@ -6,6 +6,12 @@ local RepoApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
 local RootFolder = "Taskium"
 getgenv().Taskium = getgenv().Taskium or {}
 
+local BootstrapFiles = {
+	"GUI/TaskUI.lua",
+	"GUI/Categories.lua",
+	"Games/Universal.lua"
+}
+
 local Folders = {
 	"Taskium",
 	"Taskium/GUI",
@@ -164,10 +170,20 @@ local function SyncTaskiumFiles(forceUpdate)
 	return report
 end
 
+local function EnsureBootstrapFiles(report)
+	for _, file in ipairs(BootstrapFiles) do
+		local savePath = RootFolder .. "/" .. file
+		if not isfile(savePath) then
+			DownloadFile(file, true, report)
+		end
+	end
+end
+
 getgenv().Taskium.SyncTaskiumFiles = SyncTaskiumFiles
 getgenv().Taskium.LastSyncReport = nil
 
 local InitialSyncReport = SyncTaskiumFiles(false)
+EnsureBootstrapFiles(InitialSyncReport)
 getgenv().Taskium.LastSyncReport = InitialSyncReport
 
 local function ExecuteFile(path)
