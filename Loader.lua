@@ -1,128 +1,134 @@
-local BASE_URL = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
-local ROOT_FOLDER = "Taskium"
+local HttpService = game:GetService("HttpService")
 
-local REQUIRED_FOLDERS = {
-	"Assets",
-	"Assets/GUI",
-	"Assets/Icons",
-	"Games",
+local RawGitUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
+local RepoApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
+
+local RootFolder = "Taskium"
+local Folders = {
+	"Taskium",
+	"Taskium/GUI",
+	"Taskium/Games",
+	"Taskium/Scripts",
+	"Taskium/Assets",
+	"Taskium/Assets/GUI",
+	"Taskium/Assets/Icons"
+}
+
+local DownloadFolders = {
 	"GUI",
-	"Scripts"
+	"Games",
+	"Scripts",
+	"Assets/GUI",
+	"Assets/Icons"
 }
 
-local REQUIRED_FILES = {
-	"GUI/TaskUI.lua",
-	"GUI/Categories.lua",
-	"GUI/Notifications.lua",
-	"GUI/BetaUI.lua",
-	"Games/Universal.lua",
-	"Games/Extra.lua",
-	"Games/Arsenal.lua",
-	"Games/Bedwars.lua",
-	"Games/BedwarsLobby.lua",
-	"Scripts/InfiniteYield.lua",
-	"Scripts/RemoteSpy.lua",
-	"Scripts/sUNC.lua",
-	"Assets/GUI/test.txt",
-	"Assets/Icons/test.txt"
-}
+local function HttpRequest(url)
+	local response
 
-local FILE_APIS = {
-	isfolder = isfolder,
-	makefolder = makefolder,
-	isfile = isfile,
-	writefile = writefile,
-	readfile = readfile
-}
+	if syn and syn.request then
+		response = syn.request({
+			Url = url,
+			Method = "GET"
+		})
+	elseif request then
+		response = request({
+			Url = url,
+			Method = "GET"
+		})
+	elseif http_request then
+		response = http_request({
+			Url = url,
+			Method = "GET"
+		})
+	else
+		error("Taskium loader requires syn.request, request, or http_request")
+	end
 
-for apiName, apiValue in pairs(FILE_APIS) do
-	if type(apiValue) ~= "function" then
-		error(("Taskium loader requires executor file API '%s'"):format(apiName))
+	return response
+end
+
+for _, folder in ipairs(Folders) do
+	if not isfolder(folder) then
+		makefolder(folder)
 	end
 end
 
-local function normalizePath(path)
-	return path:gsub("\\", "/")
-end
+local function DownloadFile(path)
+	local url = RawGitUrl .. path
+	local savePath = RootFolder .. "/" .. path
+	local response = HttpRequest(url)
 
-local function joinPath(...)
-	return table.concat({ ... }, "/")
-end
-
-local function ensureFolder(path)
-	path = normalizePath(path)
-
-	if FILE_APIS.isfolder(path) then
-		return
+	if response.StatusCode == 200 then
+		writefile(savePath, response.Body)
+		return true
 	end
 
-	local segments = {}
-	for segment in string.gmatch(path, "[^/]+") do
-		table.insert(segments, segment)
+	warn("Failed to download: " .. url)
+	return false
+end
+
+local function GetDirectoryContents(folder)
+	local apiUrl = RepoApiUrl .. folder
+	local response = HttpRequest(apiUrl)
+
+	if response.StatusCode ~= 200 then
+		warn("Failed to get directory listing for: " .. folder)
+		return {}
 	end
 
-	local currentPath = ""
-	for _, segment in ipairs(segments) do
-		currentPath = currentPath == "" and segment or (currentPath .. "/" .. segment)
-		if not FILE_APIS.isfolder(currentPath) then
-			FILE_APIS.makefolder(currentPath)
+	local files = {}
+	local data = HttpService:JSONDecode(response.Body)
+
+	for _, item in ipairs(data) do
+		if item.type == "file" then
+			table.insert(files, folder .. "/" .. item.name)
 		end
 	end
+
+	return files
 end
 
-local function readLocalFile(path)
-	if not FILE_APIS.isfile(path) then
+for _, folder in ipairs(DownloadFolders) do
+	local files = GetDirectoryContents(folder)
+
+	if #files > 0 then
+		for _, file in ipairs(files) do
+			DownloadFile(file)
+		end
+	else
+		warn("No files found in directory: " .. folder)
+	end
+end
+
+local function ExecuteFile(path)
+	local success, content = pcall(readfile, path)
+	if not success then
+		warn("Failed to read file: " .. path)
 		return nil
 	end
 
-	return FILE_APIS.readfile(path)
-end
-
-local function fetchRemoteFile(relativePath)
-	return game:HttpGet(BASE_URL .. relativePath, true)
-end
-
-local function syncFile(relativePath)
-	local localPath = joinPath(ROOT_FOLDER, normalizePath(relativePath))
-	local folderPath = localPath:match("^(.*)/[^/]+$")
-
-	if folderPath then
-		ensureFolder(folderPath)
+	local fn, err = loadstring(content, "@" .. path)
+	if not fn then
+		warn("Failed to load " .. path .. ": " .. tostring(err))
+		return nil
 	end
 
-	local remoteSource = fetchRemoteFile(relativePath)
-	local localSource = readLocalFile(localPath)
+	return fn()
+end
 
-	if localSource ~= remoteSource then
-		FILE_APIS.writefile(localPath, remoteSource)
+local TaskAPI = ExecuteFile("Taskium/GUI/TaskUI.lua")
+
+if TaskAPI then
+	getgenv().TaskAPI = TaskAPI
+
+	ExecuteFile("Taskium/GUI/Categories.lua")
+	ExecuteFile("Taskium/Games/Universal.lua")
+
+	if getgenv().TaskClient and getgenv().TaskClient.API then
+		TaskAPI.Notification("Taskium", "Taskium initialized successfully!", 3, "Success")
+	else
+		TaskAPI.Notification("Taskium", "Taskium failed to initialize properly", 5, "Error")
 	end
-
-	return localPath, remoteSource
 end
-
-local function loadLocalFile(relativePath)
-	local localPath, source = syncFile(relativePath)
-	local chunk, err = loadstring(source, "@" .. localPath)
-
-	if not chunk then
-		error(("Failed to compile %s: %s"):format(relativePath, tostring(err)))
-	end
-
-	return chunk()
-end
-
-ensureFolder(ROOT_FOLDER)
-
-for _, folder in ipairs(REQUIRED_FOLDERS) do
-	ensureFolder(joinPath(ROOT_FOLDER, folder))
-end
-
-for _, filePath in ipairs(REQUIRED_FILES) do
-	syncFile(filePath)
-end
-
-local TaskAPI = loadLocalFile("GUI/TaskUI.lua")
-loadLocalFile("GUI/Categories.lua")
-loadLocalFile("Games/Universal.lua")
 
 return TaskAPI
