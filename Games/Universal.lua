@@ -21,7 +21,7 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 		end
 	end,
 	ExtraText = function()
-		return "What"
+		return "Test"
 	end,
 	Tooltip = "This is a test module."
 })
