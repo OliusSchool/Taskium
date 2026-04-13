@@ -173,8 +173,8 @@ function TaskAPI.Notification(title, message, duration, notificationType)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "NotificationTitle"
-	titleLabel.Size = UDim2.new(1, -24, 0, 18)
-	titleLabel.Position = UDim2.new(0, 12, 0, 8)
+	titleLabel.Size = UDim2.new(1, -34, 0, 18)
+	titleLabel.Position = UDim2.new(0, 18, 0, 12)
 	titleLabel.BackgroundTransparency = 1
 	titleLabel.Text = notificationData.Title
 	titleLabel.TextSize = 16
@@ -187,8 +187,8 @@ function TaskAPI.Notification(title, message, duration, notificationType)
 
 	local messageLabel = Instance.new("TextLabel")
 	messageLabel.Name = "MessageText"
-	messageLabel.Size = UDim2.new(1, -24, 0, 24)
-	messageLabel.Position = UDim2.new(0, 12, 0, 28)
+	messageLabel.Size = UDim2.new(1, -34, 0, 22)
+	messageLabel.Position = UDim2.new(0, 18, 0, 30)
 	messageLabel.BackgroundTransparency = 1
 	messageLabel.Text = notificationData.Message
 	messageLabel.TextSize = 13
