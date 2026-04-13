@@ -56,6 +56,10 @@ end
 local function DownloadFile(path)
 	local url = RawGitUrl .. path
 	local savePath = RootFolder .. "/" .. path
+	if isfile(savePath) then
+		return true
+	end
+
 	local response = HttpRequest(url)
 
 	if response.StatusCode == 200 then
