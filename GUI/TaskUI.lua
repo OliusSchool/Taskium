@@ -67,7 +67,7 @@ local NotificationsContainer = Instance.new("Frame")
 NotificationsContainer.Name = "NotificationsContainer"
 NotificationsContainer.Size = UDim2.new(0, 290, 0.4, 0)
 NotificationsContainer.AnchorPoint = Vector2.new(1, 1)
-NotificationsContainer.Position = UDim2.new(1, -20, 1, -20)
+NotificationsContainer.Position = UDim2.new(1, -8, 1, -8)
 NotificationsContainer.BackgroundTransparency = 1
 NotificationsContainer.Parent = NotificationGui
 
@@ -188,7 +188,7 @@ function TaskAPI.Notification(title, message, duration, notificationType)
 	local messageLabel = Instance.new("TextLabel")
 	messageLabel.Name = "MessageText"
 	messageLabel.Size = UDim2.new(1, -24, 0, 24)
-	messageLabel.Position = UDim2.new(0, 12, 0, 27)
+	messageLabel.Position = UDim2.new(0, 12, 0, 28)
 	messageLabel.BackgroundTransparency = 1
 	messageLabel.Text = notificationData.Message
 	messageLabel.TextSize = 13
@@ -200,24 +200,6 @@ function TaskAPI.Notification(title, message, duration, notificationType)
 	messageLabel.ZIndex = 11
 	messageLabel.Parent = notificationFrame
 
-	local progressTrack = Instance.new("Frame")
-	progressTrack.Name = "ProgressTrack"
-	progressTrack.Size = UDim2.new(1, -20, 0, 3)
-	progressTrack.Position = UDim2.new(0, 10, 1, -10)
-	progressTrack.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	progressTrack.BorderSizePixel = 0
-	progressTrack.ZIndex = 11
-	progressTrack.Parent = notificationFrame
-
-	local progressFill = Instance.new("Frame")
-	progressFill.Name = "ProgressFill"
-	progressFill.Size = UDim2.new(1, 0, 1, 0)
-	progressFill.Position = UDim2.new(0, 0, 0, 0)
-	progressFill.BackgroundColor3 = accentColor
-	progressFill.BorderSizePixel = 0
-	progressFill.ZIndex = 12
-	progressFill.Parent = progressTrack
-
 	table.insert(TaskAPI.Notifications, holder)
 
 	local slideInTween = TweenService:Create(notificationFrame, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
@@ -228,12 +210,7 @@ function TaskAPI.Notification(title, message, duration, notificationType)
 		Position = UDim2.new(1, 0, 0, 0)
 	})
 
-	local progressTween = TweenService:Create(progressFill, TweenInfo.new(notificationData.Duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0, 0, 1, 0)
-	})
-
 	slideInTween:Play()
-	progressTween:Play()
 
 	task.spawn(function()
 		task.wait(notificationData.Duration)
@@ -483,8 +460,8 @@ function TaskAPI:CreateCategory(categoryData)
 			refreshModuleDisplay(self)
 
 			TaskAPI.Notification({
-				Title = self.Name,
-				Message = self.Enabled and ("Enabled in " .. self.Category.Name) or ("Disabled in " .. self.Category.Name),
+				Title = "Taskium",
+				Message = self.Name .. ": " .. (self.Enabled and "Enabled" or "Disabled"),
 				Duration = 3,
 				Type = self.Enabled and "Success" or "Info"
 			})
@@ -499,7 +476,7 @@ function TaskAPI:CreateCategory(categoryData)
 							refreshModuleDisplay(self)
 							self:Cleanup()
 							TaskAPI.Notification({
-								Title = self.Name,
+								Title = "Taskium",
 								Message = tostring(err),
 								Duration = 4,
 								Type = "Error"
@@ -511,7 +488,7 @@ function TaskAPI:CreateCategory(categoryData)
 					if not ok then
 						warn(("TaskAPI module '%s' disable failed: %s"):format(self.Name, tostring(err)))
 						TaskAPI.Notification({
-							Title = self.Name,
+							Title = "Taskium",
 							Message = tostring(err),
 							Duration = 4,
 							Type = "Error"
