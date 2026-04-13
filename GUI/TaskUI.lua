@@ -17,7 +17,7 @@ local TaskAPI = {
 local TaskAssets = {
 	CategoryFrame = "rbxassetid://126645359069961",
 	Shadow = "rbxassetid://125043055375567",
-	NotificationFrame = "rbxassetid://123298087495168"
+	NotificationFrame = "rbxassetid://110195983459398"
 }
 
 local NotificationColors = {
