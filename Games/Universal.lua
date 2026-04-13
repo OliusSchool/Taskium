@@ -21,7 +21,7 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 		end
 	end,
 	ExtraText = function()
-		return "Repeat"
+		return "Test"
 	end,
 	Tooltip = "This is a test module."
 })
@@ -49,6 +49,12 @@ Update = TaskAPI.Categories.Other:CreateModule({
 
 		if createdFiles > 0 or updatedFiles > 0 then
 			TaskAPI.Notification("Taskium", ("Updated %d file(s), added %d file(s)."):format(updatedFiles, createdFiles), 4, "Success")
+
+			if type(TaskClient.RestartTaskium) == "function" then
+				task.defer(function()
+					TaskClient.RestartTaskium()
+				end)
+			end
 		else
 			TaskAPI.Notification("Taskium", "No file updates found.", 3, "Info")
 		end

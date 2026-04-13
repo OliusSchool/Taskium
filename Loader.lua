@@ -179,14 +179,27 @@ local function ExecuteFile(path)
 	return fn()
 end
 
-local TaskAPI = ExecuteFile("Taskium/GUI/TaskUI.lua")
+local function RestartTaskium()
+	local TaskAPI = ExecuteFile("Taskium/GUI/TaskUI.lua")
+	if not TaskAPI then
+		return nil
+	end
 
-if TaskAPI then
 	getgenv().TaskAPI = TaskAPI
+	getgenv().TaskClient.API = TaskAPI
 
 	ExecuteFile("Taskium/GUI/Categories.lua")
 	ExecuteFile("Taskium/Games/Universal.lua")
 
+	return TaskAPI
+end
+
+getgenv().TaskClient.ExecuteFile = ExecuteFile
+getgenv().TaskClient.RestartTaskium = RestartTaskium
+
+local TaskAPI = RestartTaskium()
+
+if TaskAPI then
 	local createdFolderCount = #InitialSyncReport.CreatedFolders
 	local createdFileCount = #InitialSyncReport.CreatedFiles
 	local updatedFileCount = #InitialSyncReport.UpdatedFiles
