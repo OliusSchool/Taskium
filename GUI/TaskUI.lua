@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local InputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
 
 local LPlayer = Players.LocalPlayer
 local PlayerGui = LPlayer:WaitForChild("PlayerGui")
@@ -9,7 +10,22 @@ local TaskAPI = {
 	Categories = {},
 	CategoryList = {},
 	Modules = {},
+	Notifications = {},
 	Version = { "1.0.0" }
+}
+
+local TaskAssets = {
+	CategoryFrame = "rbxassetid://126645359069961",
+	Shadow = "rbxassetid://125043055375567",
+	NotificationFrame = "rbxassetid://123298087495168"
+}
+
+local NotificationColors = {
+	Client = Color3.fromRGB(255, 255, 255),
+	Success = Color3.fromRGB(46, 204, 113),
+	Error = Color3.fromRGB(231, 76, 60),
+	Warning = Color3.fromRGB(241, 196, 15),
+	Info = Color3.fromRGB(52, 152, 219)
 }
 
 getgenv().TaskClient = getgenv().TaskClient or {}
@@ -18,6 +34,10 @@ getgenv().TaskAPI = TaskAPI
 
 if PlayerGui:FindFirstChild("MainUI") then
 	PlayerGui.MainUI:Destroy()
+end
+
+if PlayerGui:FindFirstChild("TaskNotifications") then
+	PlayerGui.TaskNotifications:Destroy()
 end
 
 if Lighting:FindFirstChild("TaskUIBlur") then
@@ -37,8 +57,31 @@ BlurEffect.Size = 20
 BlurEffect.Enabled = false
 BlurEffect.Parent = Lighting
 
+local NotificationGui = Instance.new("ScreenGui")
+NotificationGui.Name = "TaskNotifications"
+NotificationGui.ResetOnSpawn = false
+NotificationGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+NotificationGui.Parent = PlayerGui
+
+local NotificationsContainer = Instance.new("Frame")
+NotificationsContainer.Name = "NotificationsContainer"
+NotificationsContainer.Size = UDim2.new(0, 290, 0.4, 0)
+NotificationsContainer.AnchorPoint = Vector2.new(0, 1)
+NotificationsContainer.Position = UDim2.new(0, 20, 1, -20)
+NotificationsContainer.BackgroundTransparency = 1
+NotificationsContainer.Parent = NotificationGui
+
+local NotificationListLayout = Instance.new("UIListLayout")
+NotificationListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NotificationListLayout.Padding = UDim.new(0, 10)
+NotificationListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+NotificationListLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotificationListLayout.Parent = NotificationsContainer
+
 TaskAPI.ScreenGui = ScreenGui
 TaskAPI.BlurEffect = BlurEffect
+TaskAPI.NotificationGui = NotificationGui
+TaskAPI.NotificationsContainer = NotificationsContainer
 
 local function cleanupItem(item)
 	local itemType = typeof(item)
@@ -84,6 +127,141 @@ local function updateShadowSize(category)
 
 	category.SEffect.Size = UDim2.new(0, widthOffset + 25, 0, heightOffset + 23)
 	category.ContainerFrame.Size = category.MainFrame.Size
+end
+
+local function normalizeNotificationData(title, message, duration, notificationType)
+	if type(title) == "table" then
+		return {
+			Title = tostring(title.Title or title.Name or "Notification"),
+			Message = tostring(title.Message or "No message has been set for this notification."),
+			Duration = tonumber(title.Duration) or 3,
+			Type = title.Type or "Client"
+		}
+	end
+
+	return {
+		Title = tostring(title or "Notification"),
+		Message = tostring(message or "No message has been set for this notification."),
+		Duration = tonumber(duration) or 3,
+		Type = notificationType or "Client"
+	}
+end
+
+function TaskAPI.Notification(title, message, duration, notificationType)
+	local notificationData = normalizeNotificationData(title, message, duration, notificationType)
+	local accentColor = NotificationColors[notificationData.Type] or NotificationColors.Info
+
+	local holder = Instance.new("Frame")
+	holder.Name = "NotificationHolder"
+	holder.Size = UDim2.new(0, 270, 0, 60)
+	holder.BackgroundTransparency = 1
+	holder.BorderSizePixel = 0
+	holder.ClipsDescendants = true
+	holder.LayoutOrder = #TaskAPI.Notifications + 1
+	holder.Parent = NotificationsContainer
+
+	local notificationFrame = Instance.new("ImageLabel")
+	notificationFrame.Name = "NotificationFrame"
+	notificationFrame.Size = UDim2.new(0, 270, 0, 60)
+	notificationFrame.Position = UDim2.new(1, 0, 0, 0)
+	notificationFrame.BackgroundTransparency = 1
+	notificationFrame.Image = TaskAssets.NotificationFrame
+	notificationFrame.ScaleType = Enum.ScaleType.Stretch
+	notificationFrame.ImageColor3 = Color3.fromRGB(255, 255, 255)
+	notificationFrame.ZIndex = 10
+	notificationFrame.Parent = holder
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "NotificationTitle"
+	titleLabel.Size = UDim2.new(1, -24, 0, 18)
+	titleLabel.Position = UDim2.new(0, 12, 0, 8)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = notificationData.Title
+	titleLabel.TextSize = 16
+	titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.ZIndex = 11
+	titleLabel.Parent = notificationFrame
+
+	local messageLabel = Instance.new("TextLabel")
+	messageLabel.Name = "MessageText"
+	messageLabel.Size = UDim2.new(1, -24, 0, 24)
+	messageLabel.Position = UDim2.new(0, 12, 0, 27)
+	messageLabel.BackgroundTransparency = 1
+	messageLabel.Text = notificationData.Message
+	messageLabel.TextSize = 13
+	messageLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
+	messageLabel.TextWrapped = true
+	messageLabel.TextXAlignment = Enum.TextXAlignment.Left
+	messageLabel.TextYAlignment = Enum.TextYAlignment.Top
+	messageLabel.Font = Enum.Font.Gotham
+	messageLabel.ZIndex = 11
+	messageLabel.Parent = notificationFrame
+
+	local progressTrack = Instance.new("Frame")
+	progressTrack.Name = "ProgressTrack"
+	progressTrack.Size = UDim2.new(1, -16, 0, 3)
+	progressTrack.Position = UDim2.new(0, 8, 1, -7)
+	progressTrack.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	progressTrack.BorderSizePixel = 0
+	progressTrack.ZIndex = 11
+	progressTrack.Parent = notificationFrame
+
+	local progressFill = Instance.new("Frame")
+	progressFill.Name = "ProgressFill"
+	progressFill.Size = UDim2.new(1, 0, 1, 0)
+	progressFill.Position = UDim2.new(0, 0, 0, 0)
+	progressFill.BackgroundColor3 = accentColor
+	progressFill.BorderSizePixel = 0
+	progressFill.ZIndex = 12
+	progressFill.Parent = progressTrack
+
+	local accentFrame = Instance.new("Frame")
+	accentFrame.Name = "AccentFrame"
+	accentFrame.Size = UDim2.new(0, 3, 1, -14)
+	accentFrame.Position = UDim2.new(0, 8, 0, 7)
+	accentFrame.BackgroundColor3 = accentColor
+	accentFrame.BorderSizePixel = 0
+	accentFrame.ZIndex = 11
+	accentFrame.Parent = notificationFrame
+
+	table.insert(TaskAPI.Notifications, holder)
+
+	local slideInTween = TweenService:Create(notificationFrame, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 0, 0, 0)
+	})
+
+	local slideOutTween = TweenService:Create(notificationFrame, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+		Position = UDim2.new(1, 0, 0, 0)
+	})
+
+	local progressTween = TweenService:Create(progressFill, TweenInfo.new(notificationData.Duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+		Size = UDim2.new(0, 0, 1, 0)
+	})
+
+	slideInTween:Play()
+	progressTween:Play()
+
+	task.spawn(function()
+		task.wait(notificationData.Duration)
+		slideOutTween:Play()
+		slideOutTween.Completed:Wait()
+
+		local notificationIndex = table.find(TaskAPI.Notifications, holder)
+		if notificationIndex then
+			table.remove(TaskAPI.Notifications, notificationIndex)
+		end
+
+		holder:Destroy()
+	end)
+
+	return holder
+end
+
+function TaskAPI:Notify(notificationData)
+	return TaskAPI.Notification(notificationData)
 end
 
 local function updateCategorySize(category)
@@ -175,7 +353,7 @@ function TaskAPI:CreateCategory(categoryData)
 	sEffect.Size = UDim2.new(0, 190, 0, 105)
 	sEffect.Position = UDim2.new(0, -13, 0, -11)
 	sEffect.BackgroundTransparency = 1
-	sEffect.Image = "rbxassetid://125043055375567"
+	sEffect.Image = TaskAssets.Shadow
 	sEffect.ZIndex = 1
 	sEffect.Parent = containerFrame
 
@@ -185,7 +363,7 @@ function TaskAPI:CreateCategory(categoryData)
 	categoryFrame.Position = UDim2.new(0, 0, 0, 0)
 	categoryFrame.Active = true
 	categoryFrame.BackgroundTransparency = 1
-	categoryFrame.Image = categoryData.CategoryImage or "rbxassetid://126645359069961"
+	categoryFrame.Image = categoryData.CategoryImage or TaskAssets.CategoryFrame
 	categoryFrame.ImageColor3 = categoryData.CategoryColor3 or Color3.fromRGB(255, 255, 255)
 	categoryFrame.ZIndex = 3
 	categoryFrame.Parent = mainFrame
@@ -313,6 +491,13 @@ function TaskAPI:CreateCategory(categoryData)
 			self.Enabled = state
 			refreshModuleDisplay(self)
 
+			TaskAPI.Notification({
+				Title = self.Name,
+				Message = self.Enabled and ("Enabled in " .. self.Category.Name) or ("Disabled in " .. self.Category.Name),
+				Duration = 3,
+				Type = self.Enabled and "Success" or "Info"
+			})
+
 			if self.Function then
 				if self.Enabled then
 					task.spawn(function()
@@ -322,12 +507,24 @@ function TaskAPI:CreateCategory(categoryData)
 							self.Enabled = false
 							refreshModuleDisplay(self)
 							self:Cleanup()
+							TaskAPI.Notification({
+								Title = self.Name,
+								Message = tostring(err),
+								Duration = 4,
+								Type = "Error"
+							})
 						end
 					end)
 				else
 					local ok, err = pcall(self.Function, false)
 					if not ok then
 						warn(("TaskAPI module '%s' disable failed: %s"):format(self.Name, tostring(err)))
+						TaskAPI.Notification({
+							Title = self.Name,
+							Message = tostring(err),
+							Duration = 4,
+							Type = "Error"
+						})
 					end
 				end
 			end
