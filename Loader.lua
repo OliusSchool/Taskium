@@ -171,12 +171,20 @@ local function SyncTaskiumFiles(forceUpdate)
 end
 
 local function EnsureBootstrapFiles(report)
+	local allBootstrapFilesExist = true
+
 	for _, file in ipairs(BootstrapFiles) do
 		local savePath = RootFolder .. "/" .. file
 		if not isfile(savePath) then
-			DownloadFile(file, true, report)
+			allBootstrapFilesExist = false
+			local success = DownloadFile(file, true, report)
+			if not success then
+				warn("Failed to bootstrap file: " .. file)
+			end
 		end
 	end
+
+	return allBootstrapFilesExist
 end
 
 getgenv().Taskium.SyncTaskiumFiles = SyncTaskiumFiles
@@ -203,8 +211,11 @@ local function ExecuteFile(path)
 end
 
 local function BootTaskium()
+	EnsureBootstrapFiles(getgenv().Taskium.LastSyncReport or CreateSyncReport())
+
 	local TaskAPI = ExecuteFile("Taskium/GUI/TaskUI.lua")
 	if not TaskAPI then
+		warn("Taskium bootstrap could not find Taskium/GUI/TaskUI.lua")
 		return nil
 	end
 
