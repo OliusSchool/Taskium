@@ -135,23 +135,52 @@ local function GetDirectoryContents(folder)
 	return files
 end
 
+local function GetAllFilesRecursive(folder, collectedFiles)
+	collectedFiles = collectedFiles or {}
+
+	local apiUrl = RepoApiUrl .. folder
+	local response = HttpRequest(apiUrl)
+
+	if response.StatusCode ~= 200 then
+		warn("Failed to get directory listing for: " .. folder)
+		return collectedFiles
+	end
+
+	local data = HttpService:JSONDecode(response.Body)
+
+	for _, item in ipairs(data) do
+		if item.type == "file" then
+			table.insert(collectedFiles, item.path or (folder .. "/" .. item.name))
+		elseif item.type == "dir" then
+			GetAllFilesRecursive(item.path or (folder .. "/" .. item.name), collectedFiles)
+		end
+	end
+
+	return collectedFiles
+end
+
 local function SyncTaskiumFiles(forceUpdate)
 	local report = CreateSyncReport()
+	local queuedFiles = {}
 
 	for _, folder in ipairs(Folders) do
 		EnsureFolder(folder, report)
 	end
 
 	for _, folder in ipairs(DownloadFolders) do
-		local files = GetDirectoryContents(folder)
+		local files = GetAllFilesRecursive(folder)
 
 		if #files > 0 then
 			for _, file in ipairs(files) do
-				DownloadFile(file, forceUpdate, report)
+				queuedFiles[file] = true
 			end
 		else
 			warn("No files found in directory: " .. folder)
 		end
+	end
+
+	for file in pairs(queuedFiles) do
+		DownloadFile(file, forceUpdate, report)
 	end
 
 	return report
