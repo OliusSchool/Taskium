@@ -202,8 +202,8 @@ function TaskAPI.Notification(title, message, duration, notificationType)
 
 	local progressTrack = Instance.new("Frame")
 	progressTrack.Name = "ProgressTrack"
-	progressTrack.Size = UDim2.new(1, -16, 0, 3)
-	progressTrack.Position = UDim2.new(0, 8, 1, -7)
+	progressTrack.Size = UDim2.new(1, -20, 0, 3)
+	progressTrack.Position = UDim2.new(0, 10, 1, -10)
 	progressTrack.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	progressTrack.BorderSizePixel = 0
 	progressTrack.ZIndex = 11
@@ -217,15 +217,6 @@ function TaskAPI.Notification(title, message, duration, notificationType)
 	progressFill.BorderSizePixel = 0
 	progressFill.ZIndex = 12
 	progressFill.Parent = progressTrack
-
-	local accentFrame = Instance.new("Frame")
-	accentFrame.Name = "AccentFrame"
-	accentFrame.Size = UDim2.new(0, 3, 1, -14)
-	accentFrame.Position = UDim2.new(0, 8, 0, 7)
-	accentFrame.BackgroundColor3 = accentColor
-	accentFrame.BorderSizePixel = 0
-	accentFrame.ZIndex = 11
-	accentFrame.Parent = notificationFrame
 
 	table.insert(TaskAPI.Notifications, holder)
 
