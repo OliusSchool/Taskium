@@ -4,7 +4,7 @@ local RawGitUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
 local RepoApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
 
 local RootFolder = "Taskium"
-getgenv().TaskClient = getgenv().TaskClient or {}
+getgenv().Taskium = getgenv().Taskium or {}
 
 local Folders = {
 	"Taskium",
@@ -157,11 +157,11 @@ local function SyncTaskiumFiles(forceUpdate)
 	return report
 end
 
-getgenv().TaskClient.SyncTaskiumFiles = SyncTaskiumFiles
-getgenv().TaskClient.LastSyncReport = nil
+getgenv().Taskium.SyncTaskiumFiles = SyncTaskiumFiles
+getgenv().Taskium.LastSyncReport = nil
 
 local InitialSyncReport = SyncTaskiumFiles(false)
-getgenv().TaskClient.LastSyncReport = InitialSyncReport
+getgenv().Taskium.LastSyncReport = InitialSyncReport
 
 local function ExecuteFile(path)
 	local success, content = pcall(readfile, path)
@@ -186,7 +186,7 @@ local function RestartTaskium()
 	end
 
 	getgenv().TaskAPI = TaskAPI
-	getgenv().TaskClient.API = TaskAPI
+	getgenv().Taskium.API = TaskAPI
 
 	ExecuteFile("Taskium/GUI/Categories.lua")
 	ExecuteFile("Taskium/Games/Universal.lua")
@@ -194,8 +194,8 @@ local function RestartTaskium()
 	return TaskAPI
 end
 
-getgenv().TaskClient.ExecuteFile = ExecuteFile
-getgenv().TaskClient.RestartTaskium = RestartTaskium
+getgenv().Taskium.ExecuteFile = ExecuteFile
+getgenv().Taskium.RestartTaskium = RestartTaskium
 
 local TaskAPI = RestartTaskium()
 
@@ -212,7 +212,7 @@ if TaskAPI then
 		TaskAPI.Notification("Taskium", ("Files synced: %d new, %d updated."):format(createdFileCount, updatedFileCount), 3, "Success")
 	end
 
-	if getgenv().TaskClient and getgenv().TaskClient.API then
+	if getgenv().Taskium and getgenv().Taskium.API then
 		TaskAPI.Notification("Taskium", "Taskium initialized successfully!", 3, "Success")
 	else
 		TaskAPI.Notification("Taskium", "Taskium failed to initialize properly", 5, "Error")

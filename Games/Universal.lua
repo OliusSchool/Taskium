@@ -1,5 +1,5 @@
-local TaskAPI = getgenv().TaskAPI or (getgenv().TaskClient and getgenv().TaskClient.API)
-local TaskClient = getgenv().TaskClient
+local TaskAPI = getgenv().TaskAPI or (getgenv().Taskium and getgenv().Taskium.API)
+local Taskium = getgenv().Taskium
 
 if not TaskAPI or not TaskAPI.Categories or not TaskAPI.Categories.Combat or not TaskAPI.Categories.Other then
 	error("Required categories were not loaded before Games/Universal.lua")
@@ -34,11 +34,11 @@ Update = TaskAPI.Categories.Other:CreateModule({
 			return
 		end
 
-		if not TaskClient or type(TaskClient.SyncTaskiumFiles) ~= "function" then
+		if not Taskium or type(Taskium.SyncTaskiumFiles) ~= "function" then
 			error("Taskium updater is not available")
 		end
 
-		local report = TaskClient.SyncTaskiumFiles(true)
+		local report = Taskium.SyncTaskiumFiles(true)
 		local createdFolders = #report.CreatedFolders
 		local createdFiles = #report.CreatedFiles
 		local updatedFiles = #report.UpdatedFiles
@@ -50,9 +50,9 @@ Update = TaskAPI.Categories.Other:CreateModule({
 		if createdFiles > 0 or updatedFiles > 0 then
 			TaskAPI.Notification("Taskium", ("Updated %d file(s), added %d file(s)."):format(updatedFiles, createdFiles), 4, "Success")
 
-			if type(TaskClient.RestartTaskium) == "function" then
+			if type(Taskium.RestartTaskium) == "function" then
 				task.defer(function()
-					TaskClient.RestartTaskium()
+					Taskium.RestartTaskium()
 				end)
 			end
 		else

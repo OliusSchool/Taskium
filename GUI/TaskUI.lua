@@ -17,7 +17,7 @@ local TaskAPI = {
 local TaskAssets = {
 	CategoryFrame = "rbxassetid://126645359069961",
 	Shadow = "rbxassetid://125043055375567",
-	NotificationFrame = "rbxassetid://110195983459398"
+	NotificationFrame = "rbxassetid://123298087495168"
 }
 
 local NotificationColors = {
@@ -28,8 +28,8 @@ local NotificationColors = {
 	Info = Color3.fromRGB(52, 152, 219)
 }
 
-getgenv().TaskClient = getgenv().TaskClient or {}
-getgenv().TaskClient.API = TaskAPI
+getgenv().Taskium = getgenv().Taskium or {}
+getgenv().Taskium.API = TaskAPI
 getgenv().TaskAPI = TaskAPI
 
 if PlayerGui:FindFirstChild("MainUI") then
