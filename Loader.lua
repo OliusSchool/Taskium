@@ -16,14 +16,6 @@ local Folders = {
 	"Taskium/Assets/Icons"
 }
 
-local DownloadFolders = {
-	"GUI",
-	"Games",
-	"Scripts",
-	"Assets/GUI",
-	"Assets/Icons"
-}
-
 local function HttpRequest(url)
 	local response
 
@@ -47,6 +39,10 @@ local function HttpRequest(url)
 	end
 
 	return response
+end
+
+local function GetParentFolder(path)
+	return path:match("^(.*)/[^/]+$")
 end
 
 for _, folder in ipairs(Folders) do
@@ -77,9 +73,14 @@ local function DownloadFile(path, forceUpdate, report)
 	local url = RawGitUrl .. path
 	local savePath = RootFolder .. "/" .. path
 	local fileExists = isfile(savePath)
+	local parentFolder = GetParentFolder(savePath)
 
 	if fileExists and not forceUpdate then
 		return true
+	end
+
+	if parentFolder then
+		EnsureFolder(parentFolder, report)
 	end
 
 	local response = HttpRequest(url)
@@ -114,27 +115,6 @@ local function DownloadFile(path, forceUpdate, report)
 	return false
 end
 
-local function GetDirectoryContents(folder)
-	local apiUrl = RepoApiUrl .. folder
-	local response = HttpRequest(apiUrl)
-
-	if response.StatusCode ~= 200 then
-		warn("Failed to get directory listing for: " .. folder)
-		return {}
-	end
-
-	local files = {}
-	local data = HttpService:JSONDecode(response.Body)
-
-	for _, item in ipairs(data) do
-		if item.type == "file" then
-			table.insert(files, folder .. "/" .. item.name)
-		end
-	end
-
-	return files
-end
-
 local function GetAllFilesRecursive(folder, collectedFiles)
 	collectedFiles = collectedFiles or {}
 
@@ -167,22 +147,20 @@ local function SyncTaskiumFiles(forceUpdate)
 		EnsureFolder(folder, report)
 	end
 
-	for _, folder in ipairs(DownloadFolders) do
-		local files = GetAllFilesRecursive(folder)
+	local files = GetAllFilesRecursive("")
+	if #files == 0 then
+		warn("No files found in repository.")
+	end
 
-		if #files > 0 then
-			for _, file in ipairs(files) do
-				queuedFiles[file] = true
-			end
-		else
-			warn("No files found in directory: " .. folder)
-		end
+	for _, file in ipairs(files) do
+		queuedFiles[file] = true
 	end
 
 	for file in pairs(queuedFiles) do
 		DownloadFile(file, forceUpdate, report)
 	end
 
+	getgenv().Taskium.LastSyncReport = report
 	return report
 end
 
@@ -208,7 +186,7 @@ local function ExecuteFile(path)
 	return fn()
 end
 
-local function RestartTaskium()
+local function BootTaskium()
 	local TaskAPI = ExecuteFile("Taskium/GUI/TaskUI.lua")
 	if not TaskAPI then
 		return nil
@@ -223,10 +201,14 @@ local function RestartTaskium()
 	return TaskAPI
 end
 
+local function RestartTaskium()
+	return BootTaskium()
+end
+
 getgenv().Taskium.ExecuteFile = ExecuteFile
 getgenv().Taskium.RestartTaskium = RestartTaskium
 
-local TaskAPI = RestartTaskium()
+local TaskAPI = BootTaskium()
 
 if TaskAPI then
 	local createdFolderCount = #InitialSyncReport.CreatedFolders
