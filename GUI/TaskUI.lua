@@ -255,8 +255,8 @@ local function refreshModuleDisplay(module)
 		return
 	end
 
-	module.Background.BackgroundColor3 = module.Enabled and Color3.fromRGB(36, 36, 36) or Color3.fromRGB(17, 17, 17)
-	module.Button.TextColor3 = module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 205)
+	module.Button.BackgroundColor3 = module.Enabled and Color3.fromRGB(36, 36, 36) or Color3.fromRGB(17, 17, 17)
+	module.NameLabel.TextColor3 = module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 205)
 
 	local extraText = ""
 	if type(module.ExtraText) == "function" then
@@ -269,7 +269,7 @@ local function refreshModuleDisplay(module)
 	end
 
 	module.ExtraLabel.Text = extraText
-	module.Button.Text = module.Name
+	module.NameLabel.Text = module.Name
 end
 
 function TaskAPI:CreateCategory(categoryData)
@@ -394,37 +394,33 @@ function TaskAPI:CreateCategory(categoryData)
 		local moduleButton = Instance.new("TextButton")
 		moduleButton.Name = moduleData.Name
 		moduleButton.Size = UDim2.new(1, 0, 0, 35)
-		moduleButton.BackgroundTransparency = 1
+		moduleButton.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
 		moduleButton.BorderSizePixel = 0
 		moduleButton.AutoButtonColor = false
-		moduleButton.Text = moduleData.Name
+		moduleButton.Text = ""
 		moduleButton.TextSize = 16
-		moduleButton.TextColor3 = Color3.fromRGB(205, 205, 205)
-		moduleButton.TextXAlignment = Enum.TextXAlignment.Left
-		moduleButton.TextYAlignment = Enum.TextYAlignment.Center
-		moduleButton.Font = Enum.Font.GothamBold
 		moduleButton.ZIndex = 4
 		moduleButton.Parent = self.ModulesHolder
 
-		local moduleBackground = Instance.new("Frame")
-		moduleBackground.Name = "ModuleBackground"
-		moduleBackground.Size = UDim2.new(1, 0, 0, 35)
-		moduleBackground.Position = UDim2.new(0, 0, 0, 0)
-		moduleBackground.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
-		moduleBackground.BorderSizePixel = 0
-		moduleBackground.ZIndex = 3
-		moduleBackground.Parent = moduleButton
-
-		local buttonPadding = Instance.new("UIPadding")
-		buttonPadding.PaddingLeft = UDim.new(0, 10)
-		buttonPadding.PaddingRight = UDim.new(0, 10)
-		buttonPadding.Parent = moduleButton
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Name = "ModuleName"
+		nameLabel.Size = UDim2.new(1, -72, 1, 0)
+		nameLabel.Position = UDim2.new(0, 8, 0, 0)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Text = moduleData.Name
+		nameLabel.TextSize = 16
+		nameLabel.TextColor3 = Color3.fromRGB(205, 205, 205)
+		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+		nameLabel.TextYAlignment = Enum.TextYAlignment.Center
+		nameLabel.Font = Enum.Font.GothamBold
+		nameLabel.ZIndex = 5
+		nameLabel.Parent = moduleButton
 
 		local extraLabel = Instance.new("TextLabel")
 		extraLabel.Name = "ExtraText"
-		extraLabel.Size = UDim2.new(0, 60, 1, 0)
+		extraLabel.Size = UDim2.new(0, 56, 1, 0)
 		extraLabel.AnchorPoint = Vector2.new(1, 0)
-		extraLabel.Position = UDim2.new(1, -10, 0, 0)
+		extraLabel.Position = UDim2.new(1, -8, 0, 0)
 		extraLabel.BackgroundTransparency = 1
 		extraLabel.Text = ""
 		extraLabel.TextSize = 14
@@ -442,7 +438,7 @@ function TaskAPI:CreateCategory(categoryData)
 			ExtraText = moduleData.ExtraText,
 			Tooltip = moduleData.Tooltip,
 			Button = moduleButton,
-			Background = moduleBackground,
+			NameLabel = nameLabel,
 			ExtraLabel = extraLabel,
 			Category = self,
 			Cleanups = {}
