@@ -20,9 +20,6 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 			until (not TestModule.Enabled)
 		end
 	end,
-	ExtraText = function()
-		return tostring(PrintSpeed)
-	end,
 	Tooltip = "This is a test module.",
 	Toggles = {
 		{

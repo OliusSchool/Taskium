@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local InputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 
 local LPlayer = Players.LocalPlayer
@@ -17,7 +18,8 @@ local TaskAPI = {
 local TaskAssets = {
 	CategoryFrame = "rbxassetid://126645359069961",
 	Shadow = "rbxassetid://125043055375567",
-	NotificationFrame = "rbxassetid://123298087495168"
+	NotificationFrame = "rbxassetid://123298087495168",
+	TooltipFrame = "rbxassetid://109798445140553"
 }
 
 local NotificationColors = {
@@ -82,6 +84,87 @@ TaskAPI.ScreenGui = ScreenGui
 TaskAPI.BlurEffect = BlurEffect
 TaskAPI.NotificationGui = NotificationGui
 TaskAPI.NotificationsContainer = NotificationsContainer
+
+local TooltipFrame = Instance.new("Frame")
+TooltipFrame.Name = "ModuleTooltip"
+TooltipFrame.Size = UDim2.new(0, 20, 0, 20)
+TooltipFrame.BackgroundTransparency = 1
+TooltipFrame.BorderSizePixel = 0
+TooltipFrame.Visible = false
+TooltipFrame.ZIndex = 50
+TooltipFrame.Parent = ScreenGui
+
+local TooltipImage = Instance.new("ImageLabel")
+TooltipImage.Name = "TooltipImage"
+TooltipImage.Size = UDim2.new(1, 0, 1, 0)
+TooltipImage.BackgroundTransparency = 1
+TooltipImage.BorderSizePixel = 0
+TooltipImage.Image = TaskAssets.TooltipFrame
+TooltipImage.ScaleType = Enum.ScaleType.Stretch
+TooltipImage.ZIndex = 50
+TooltipImage.Parent = TooltipFrame
+
+local TooltipText = Instance.new("TextLabel")
+TooltipText.Name = "TooltipText"
+TooltipText.Size = UDim2.new(1, -12, 1, 0)
+TooltipText.Position = UDim2.new(0, 6, 0, 0)
+TooltipText.BackgroundTransparency = 1
+TooltipText.BorderSizePixel = 0
+TooltipText.Text = ""
+TooltipText.TextSize = 12
+TooltipText.TextColor3 = Color3.fromRGB(255, 255, 255)
+TooltipText.TextXAlignment = Enum.TextXAlignment.Center
+TooltipText.TextYAlignment = Enum.TextYAlignment.Center
+TooltipText.Font = Enum.Font.Gotham
+TooltipText.ZIndex = 51
+TooltipText.Parent = TooltipFrame
+
+local activeTooltipText = nil
+
+local function getViewportSize()
+	local camera = workspace.CurrentCamera
+	if camera then
+		return camera.ViewportSize
+	end
+
+	return Vector2.new(1920, 1080)
+end
+
+local function updateTooltipPosition(mousePosition)
+	if not TooltipFrame.Visible then
+		return
+	end
+
+	local viewportSize = getViewportSize()
+	local tooltipWidth = TooltipFrame.Size.X.Offset
+	local tooltipHeight = TooltipFrame.Size.Y.Offset
+	local positionX = math.clamp(mousePosition.X + 14, 6, viewportSize.X - tooltipWidth - 6)
+	local positionY = math.clamp(mousePosition.Y + 16, 6, viewportSize.Y - tooltipHeight - 6)
+
+	TooltipFrame.Position = UDim2.new(0, positionX, 0, positionY)
+end
+
+local function showTooltip(text)
+	if type(text) ~= "string" or text == "" then
+		return
+	end
+
+	activeTooltipText = text
+
+	local textSize = TextService:GetTextSize(text, 12, Enum.Font.Gotham, Vector2.new(1000, 20))
+	local tooltipWidth = math.max(20, textSize.X + 14)
+
+	TooltipFrame.Size = UDim2.new(0, tooltipWidth, 0, 20)
+	TooltipText.Text = text
+	TooltipFrame.Visible = true
+	updateTooltipPosition(InputService:GetMouseLocation())
+end
+
+local function hideTooltip()
+	activeTooltipText = nil
+	TooltipFrame.Visible = false
+	TooltipText.Text = ""
+end
 
 local function cleanupItem(item)
 	local itemType = typeof(item)
@@ -285,18 +368,6 @@ local function refreshModuleDisplay(module)
 	module.Button.BackgroundColor3 = module.Enabled and Color3.fromRGB(36, 36, 36) or Color3.fromRGB(17, 17, 17)
 	module.NameLabel.TextColor3 = module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 205)
 	module.ArrowButton.TextColor3 = module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
-
-	local extraText = ""
-	if type(module.ExtraText) == "function" then
-		local ok, result = pcall(module.ExtraText)
-		if ok and result ~= nil then
-			extraText = tostring(result)
-		end
-	elseif module.ExtraText ~= nil then
-		extraText = tostring(module.ExtraText)
-	end
-
-	module.ExtraLabel.Text = extraText
 	module.NameLabel.Text = module.Name
 	module.ArrowButton.Visible = (#module.ToggleList + #module.SliderList) > 0
 	module.ArrowButton.Text = module.Expanded and "v" or ">"
@@ -442,7 +513,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.Name = "ModuleName"
-		nameLabel.Size = UDim2.new(1, -96, 1, 0)
+		nameLabel.Size = UDim2.new(1, -34, 1, 0)
 		nameLabel.Position = UDim2.new(0, 8, 0, 0)
 		nameLabel.BackgroundTransparency = 1
 		nameLabel.Text = moduleData.Name
@@ -469,21 +540,6 @@ function TaskAPI:CreateCategory(categoryData)
 		arrowButton.ZIndex = 6
 		arrowButton.Parent = moduleButton
 
-		local extraLabel = Instance.new("TextLabel")
-		extraLabel.Name = "ExtraText"
-		extraLabel.Size = UDim2.new(0, 42, 1, 0)
-		extraLabel.AnchorPoint = Vector2.new(1, 0)
-		extraLabel.Position = UDim2.new(1, -28, 0, 0)
-		extraLabel.BackgroundTransparency = 1
-		extraLabel.Text = ""
-		extraLabel.TextSize = 14
-		extraLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
-		extraLabel.TextXAlignment = Enum.TextXAlignment.Right
-		extraLabel.TextYAlignment = Enum.TextYAlignment.Center
-		extraLabel.Font = Enum.Font.Gotham
-		extraLabel.ZIndex = 5
-		extraLabel.Parent = moduleButton
-
 		local optionsHolder = Instance.new("Frame")
 		optionsHolder.Name = "OptionsHolder"
 		optionsHolder.Size = UDim2.new(1, 0, 0, 0)
@@ -504,13 +560,11 @@ function TaskAPI:CreateCategory(categoryData)
 			Enabled = false,
 			Expanded = false,
 			Function = moduleData.Function,
-			ExtraText = moduleData.ExtraText,
 			Tooltip = moduleData.Tooltip,
 			Container = moduleContainer,
 			Button = moduleButton,
 			NameLabel = nameLabel,
 			ArrowButton = arrowButton,
-			ExtraLabel = extraLabel,
 			OptionsHolder = optionsHolder,
 			ToggleList = {},
 			Toggles = {},
@@ -906,6 +960,14 @@ function TaskAPI:CreateCategory(categoryData)
 			module:Toggle()
 		end)
 
+		moduleButton.MouseEnter:Connect(function()
+			showTooltip(module.Tooltip)
+		end)
+
+		moduleButton.MouseLeave:Connect(function()
+			hideTooltip()
+		end)
+
 		moduleButton.MouseButton2Click:Connect(function()
 			if (#module.ToggleList + #module.SliderList) > 0 then
 				module:SetExpanded(not module.Expanded)
@@ -985,6 +1047,15 @@ InputService.InputBegan:Connect(function(input, gameProcessed)
 	if input.KeyCode == Enum.KeyCode.RightShift then
 		ScreenGui.Enabled = not ScreenGui.Enabled
 		BlurEffect.Enabled = ScreenGui.Enabled
+		if not ScreenGui.Enabled then
+			hideTooltip()
+		end
+	end
+end)
+
+InputService.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement and activeTooltipText then
+		updateTooltipPosition(input.Position)
 	end
 end)
 
