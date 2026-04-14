@@ -96,6 +96,10 @@ TooltipFrame.Visible = false
 TooltipFrame.ZIndex = 50
 TooltipFrame.Parent = ScreenGui
 
+local TooltipCorner = Instance.new("UICorner")
+TooltipCorner.CornerRadius = UDim.new(0, 20)
+TooltipCorner.Parent = TooltipFrame
+
 local TooltipImage = Instance.new("ImageLabel")
 TooltipImage.Name = "TooltipImage"
 TooltipImage.Size = UDim2.new(1, 0, 1, 0)
