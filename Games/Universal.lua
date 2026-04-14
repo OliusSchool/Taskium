@@ -34,4 +34,34 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 	}
 })
 
+local TestModuleA
+TestModuleA = TaskAPI.Categories.Render:CreateModule({
+	Name = "TestModuleA",
+	Function = function(enabled)
+		print(enabled, "module state")
+
+		if enabled then
+			TestModule:Clean(Instance.new("Part"))
+
+			repeat
+				print("repeat loop!")
+				task.wait(1)
+			until (not TestModuleA.Enabled)
+		end
+	end,
+	ExtraText = function()
+		return "Test"
+	end,
+	Tooltip = "This is a test module.",
+	Toggles = {
+		{
+			Name = "Toggle",
+			Function = function(callback)
+				print(callback, "toggle enabled!")
+			end,
+			Tooltip = "This is a test toggle."
+		}
+	}
+})
+
 return TaskAPI

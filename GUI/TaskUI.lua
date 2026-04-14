@@ -248,6 +248,7 @@ local function updateCategorySize(category)
 	local defaultHeight = category.DefaultSize.Y.Offset
 	local totalContentHeight = 0
 	local minimumContentHeight = 35
+	local bottomPadding = 7
 
 	for _, module in ipairs(category.ModuleList) do
 		totalContentHeight = totalContentHeight + module.Container.Size.Y.Offset
@@ -255,7 +256,7 @@ local function updateCategorySize(category)
 
 	totalContentHeight = math.max(totalContentHeight, minimumContentHeight)
 
-	local totalHeight = math.max(defaultHeight, 40 + totalContentHeight)
+	local totalHeight = math.max(defaultHeight, 40 + totalContentHeight + bottomPadding)
 
 	category.MainFrame.Size = UDim2.new(
 		category.MainFrame.Size.X.Scale,
