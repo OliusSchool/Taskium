@@ -385,13 +385,12 @@ local function refreshToggleDisplay(toggle)
 		return
 	end
 
-	local moduleEnabled = toggle.Module and toggle.Module.Enabled
-	local toggleEnabled = moduleEnabled and toggle.Enabled
+	local toggleEnabled = toggle.Enabled
 
 	toggle.Button.BackgroundColor3 = toggleEnabled and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
-	toggle.NameLabel.TextColor3 = moduleEnabled and (toggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)) or Color3.fromRGB(110, 110, 110)
+	toggle.NameLabel.TextColor3 = toggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
 	toggle.StateLabel.Text = toggleEnabled and "On" or "Off"
-	toggle.StateLabel.TextColor3 = moduleEnabled and (toggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)) or Color3.fromRGB(110, 110, 110)
+	toggle.StateLabel.TextColor3 = toggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
 end
 
 function TaskAPI:CreateCategory(categoryData)
