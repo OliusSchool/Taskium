@@ -385,7 +385,7 @@ local function refreshToggleDisplay(toggle)
 		return
 	end
 
-	local toggleEnabled = toggle.Enabled
+	local toggleEnabled = toggle.Value
 
 	toggle.Button.BackgroundColor3 = toggleEnabled and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
 	toggle.NameLabel.TextColor3 = toggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
@@ -728,6 +728,7 @@ function TaskAPI:CreateCategory(categoryData)
 			local toggle = {
 				Name = toggleData.Name,
 				Enabled = false,
+				Value = false,
 				Active = false,
 				Function = toggleData.Function,
 				Tooltip = toggleData.Tooltip,
@@ -742,11 +743,13 @@ function TaskAPI:CreateCategory(categoryData)
 				refreshToggleDisplay(self)
 
 				if not self.Function or not self.Module then
+					self.Enabled = false
 					self.Active = false
 					return
 				end
 
-				local shouldRun = self.Module.Enabled and self.Enabled
+				local shouldRun = self.Module.Enabled and self.Value
+				self.Enabled = shouldRun
 				if not forceCallback and self.Active == shouldRun then
 					return
 				end
@@ -766,23 +769,24 @@ function TaskAPI:CreateCategory(categoryData)
 
 			function toggle:SetEnabled(state)
 				state = not not state
-				if self.Enabled == state then
+				if self.Value == state then
 					refreshToggleDisplay(self)
 					return
 				end
 
-				self.Enabled = state
+				self.Value = state
 				refreshToggleDisplay(self)
 
 				if self.Module and self.Module.Enabled then
 					self:ApplyCurrentState()
 				else
+					self.Enabled = false
 					self.Active = false
 				end
 			end
 
 			function toggle:Toggle()
-				self:SetEnabled(not self.Enabled)
+				self:SetEnabled(not self.Value)
 			end
 
 			toggleButton.MouseButton1Click:Connect(function()
