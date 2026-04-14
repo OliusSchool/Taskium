@@ -129,6 +129,18 @@ local function updateShadowSize(category)
 	category.ContainerFrame.Size = category.MainFrame.Size
 end
 
+local function updateModuleLayout(module)
+	local rowHeight = 35
+	local toggleHeight = 30
+	local toggleCount = #module.ToggleList
+	local togglesHeight = module.Expanded and (toggleCount * toggleHeight) or 0
+
+	module.TogglesHolder.Size = UDim2.new(1, 0, 0, togglesHeight)
+	module.Container.Size = UDim2.new(1, 0, 0, rowHeight + togglesHeight)
+	module.ArrowButton.Visible = toggleCount > 0
+	module.ArrowButton.Text = module.Expanded and "v" or ">"
+end
+
 local function normalizeNotificationData(title, message, duration, notificationType)
 	if type(title) == "table" then
 		return {
@@ -233,11 +245,14 @@ function TaskAPI:Notify(notificationData)
 end
 
 local function updateCategorySize(category)
-	local moduleCount = #category.ModuleList
-	local moduleHeight = 35
 	local defaultHeight = category.DefaultSize.Y.Offset
-	local extraModules = math.max(0, moduleCount - 1)
-	local totalHeight = defaultHeight + (extraModules * moduleHeight)
+	local totalContentHeight = 0
+
+	for _, module in ipairs(category.ModuleList) do
+		totalContentHeight = totalContentHeight + module.Container.Size.Y.Offset
+	end
+
+	local totalHeight = math.max(defaultHeight, 40 + math.max(totalContentHeight, 35))
 
 	category.MainFrame.Size = UDim2.new(
 		category.MainFrame.Size.X.Scale,
@@ -246,7 +261,7 @@ local function updateCategorySize(category)
 		totalHeight
 	)
 
-	category.ModulesHolder.Size = UDim2.new(1, 0, 0, moduleCount * moduleHeight)
+	category.ModulesHolder.Size = UDim2.new(1, 0, 0, totalContentHeight)
 	updateShadowSize(category)
 end
 
@@ -257,6 +272,7 @@ local function refreshModuleDisplay(module)
 
 	module.Button.BackgroundColor3 = module.Enabled and Color3.fromRGB(36, 36, 36) or Color3.fromRGB(17, 17, 17)
 	module.NameLabel.TextColor3 = module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 205)
+	module.ArrowButton.TextColor3 = module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
 
 	local extraText = ""
 	if type(module.ExtraText) == "function" then
@@ -270,6 +286,8 @@ local function refreshModuleDisplay(module)
 
 	module.ExtraLabel.Text = extraText
 	module.NameLabel.Text = module.Name
+	module.ArrowButton.Visible = #module.ToggleList > 0
+	module.ArrowButton.Text = module.Expanded and "v" or ">"
 end
 
 function TaskAPI:CreateCategory(categoryData)
@@ -391,6 +409,14 @@ function TaskAPI:CreateCategory(categoryData)
 			error(("Module '%s' Function must be a function"):format(moduleData.Name))
 		end
 
+		local moduleContainer = Instance.new("Frame")
+		moduleContainer.Name = moduleData.Name .. "_Container"
+		moduleContainer.Size = UDim2.new(1, 0, 0, 35)
+		moduleContainer.BackgroundTransparency = 1
+		moduleContainer.BorderSizePixel = 0
+		moduleContainer.ZIndex = 4
+		moduleContainer.Parent = self.ModulesHolder
+
 		local moduleButton = Instance.new("TextButton")
 		moduleButton.Name = moduleData.Name
 		moduleButton.Size = UDim2.new(1, 0, 0, 35)
@@ -400,11 +426,11 @@ function TaskAPI:CreateCategory(categoryData)
 		moduleButton.Text = ""
 		moduleButton.TextSize = 16
 		moduleButton.ZIndex = 4
-		moduleButton.Parent = self.ModulesHolder
+		moduleButton.Parent = moduleContainer
 
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.Name = "ModuleName"
-		nameLabel.Size = UDim2.new(1, -72, 1, 0)
+		nameLabel.Size = UDim2.new(1, -96, 1, 0)
 		nameLabel.Position = UDim2.new(0, 8, 0, 0)
 		nameLabel.BackgroundTransparency = 1
 		nameLabel.Text = moduleData.Name
@@ -416,11 +442,26 @@ function TaskAPI:CreateCategory(categoryData)
 		nameLabel.ZIndex = 5
 		nameLabel.Parent = moduleButton
 
+		local arrowButton = Instance.new("TextButton")
+		arrowButton.Name = "ExpandArrow"
+		arrowButton.Size = UDim2.new(0, 18, 1, 0)
+		arrowButton.AnchorPoint = Vector2.new(1, 0)
+		arrowButton.Position = UDim2.new(1, -6, 0, 0)
+		arrowButton.BackgroundTransparency = 1
+		arrowButton.AutoButtonColor = false
+		arrowButton.Text = ">"
+		arrowButton.TextSize = 16
+		arrowButton.TextColor3 = Color3.fromRGB(170, 170, 170)
+		arrowButton.Font = Enum.Font.GothamBold
+		arrowButton.Visible = false
+		arrowButton.ZIndex = 6
+		arrowButton.Parent = moduleButton
+
 		local extraLabel = Instance.new("TextLabel")
 		extraLabel.Name = "ExtraText"
-		extraLabel.Size = UDim2.new(0, 56, 1, 0)
+		extraLabel.Size = UDim2.new(0, 42, 1, 0)
 		extraLabel.AnchorPoint = Vector2.new(1, 0)
-		extraLabel.Position = UDim2.new(1, -8, 0, 0)
+		extraLabel.Position = UDim2.new(1, -28, 0, 0)
 		extraLabel.BackgroundTransparency = 1
 		extraLabel.Text = ""
 		extraLabel.TextSize = 14
@@ -431,15 +472,36 @@ function TaskAPI:CreateCategory(categoryData)
 		extraLabel.ZIndex = 5
 		extraLabel.Parent = moduleButton
 
+		local togglesHolder = Instance.new("Frame")
+		togglesHolder.Name = "TogglesHolder"
+		togglesHolder.Size = UDim2.new(1, 0, 0, 0)
+		togglesHolder.Position = UDim2.new(0, 0, 0, 35)
+		togglesHolder.BackgroundTransparency = 1
+		togglesHolder.BorderSizePixel = 0
+		togglesHolder.ClipsDescendants = true
+		togglesHolder.ZIndex = 4
+		togglesHolder.Parent = moduleContainer
+
+		local togglesLayout = Instance.new("UIListLayout")
+		togglesLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		togglesLayout.Padding = UDim.new(0, 0)
+		togglesLayout.Parent = togglesHolder
+
 		local module = {
 			Name = moduleData.Name,
 			Enabled = false,
+			Expanded = false,
 			Function = moduleData.Function,
 			ExtraText = moduleData.ExtraText,
 			Tooltip = moduleData.Tooltip,
+			Container = moduleContainer,
 			Button = moduleButton,
 			NameLabel = nameLabel,
+			ArrowButton = arrowButton,
 			ExtraLabel = extraLabel,
+			TogglesHolder = togglesHolder,
+			ToggleList = {},
+			Toggles = {},
 			Category = self,
 			Cleanups = {}
 		}
@@ -512,8 +574,137 @@ function TaskAPI:CreateCategory(categoryData)
 			self:SetEnabled(not self.Enabled)
 		end
 
+		function module:SetExpanded(state)
+			self.Expanded = not not state
+			updateModuleLayout(self)
+			updateCategorySize(self.Category)
+			refreshModuleDisplay(self)
+		end
+
+		function module:CreateToggle(toggleData)
+			if not toggleData or type(toggleData.Name) ~= "string" or toggleData.Name == "" then
+				error(("Module '%s' requires a valid toggle name"):format(self.Name))
+			end
+
+			if self.Toggles[toggleData.Name] then
+				error(("Toggle '%s' already exists in module '%s'"):format(toggleData.Name, self.Name))
+			end
+
+			if toggleData.Function ~= nil and type(toggleData.Function) ~= "function" then
+				error(("Toggle '%s' Function must be a function"):format(toggleData.Name))
+			end
+
+			local toggleButton = Instance.new("TextButton")
+			toggleButton.Name = toggleData.Name
+			toggleButton.Size = UDim2.new(1, 0, 0, 30)
+			toggleButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			toggleButton.BorderSizePixel = 0
+			toggleButton.AutoButtonColor = false
+			toggleButton.Text = ""
+			toggleButton.ZIndex = 4
+			toggleButton.Parent = self.TogglesHolder
+
+			local toggleNameLabel = Instance.new("TextLabel")
+			toggleNameLabel.Name = "ToggleName"
+			toggleNameLabel.Size = UDim2.new(1, -76, 1, 0)
+			toggleNameLabel.Position = UDim2.new(0, 18, 0, 0)
+			toggleNameLabel.BackgroundTransparency = 1
+			toggleNameLabel.Text = toggleData.Name
+			toggleNameLabel.TextSize = 14
+			toggleNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			toggleNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			toggleNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			toggleNameLabel.Font = Enum.Font.Gotham
+			toggleNameLabel.ZIndex = 5
+			toggleNameLabel.Parent = toggleButton
+
+			local toggleStateLabel = Instance.new("TextLabel")
+			toggleStateLabel.Name = "ToggleState"
+			toggleStateLabel.Size = UDim2.new(0, 44, 1, 0)
+			toggleStateLabel.AnchorPoint = Vector2.new(1, 0)
+			toggleStateLabel.Position = UDim2.new(1, -8, 0, 0)
+			toggleStateLabel.BackgroundTransparency = 1
+			toggleStateLabel.Text = "Off"
+			toggleStateLabel.TextSize = 13
+			toggleStateLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			toggleStateLabel.TextXAlignment = Enum.TextXAlignment.Right
+			toggleStateLabel.TextYAlignment = Enum.TextYAlignment.Center
+			toggleStateLabel.Font = Enum.Font.Gotham
+			toggleStateLabel.ZIndex = 5
+			toggleStateLabel.Parent = toggleButton
+
+			local toggle = {
+				Name = toggleData.Name,
+				Enabled = false,
+				Function = toggleData.Function,
+				Tooltip = toggleData.Tooltip,
+				Button = toggleButton,
+				NameLabel = toggleNameLabel,
+				StateLabel = toggleStateLabel,
+				Module = self
+			}
+
+			function toggle:SetEnabled(state)
+				state = not not state
+				if self.Enabled == state then
+					return
+				end
+
+				self.Enabled = state
+				self.Button.BackgroundColor3 = self.Enabled and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
+				self.NameLabel.TextColor3 = self.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
+				self.StateLabel.Text = self.Enabled and "On" or "Off"
+				self.StateLabel.TextColor3 = self.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
+
+				if self.Function then
+					local ok, err = pcall(self.Function, self.Enabled)
+					if not ok then
+						warn(("TaskAPI toggle '%s' failed: %s"):format(self.Name, tostring(err)))
+						TaskAPI.Notification({
+							Title = "Taskium",
+							Message = tostring(err),
+							Duration = 4,
+							Type = "Error"
+						})
+					end
+				end
+			end
+
+			function toggle:Toggle()
+				self:SetEnabled(not self.Enabled)
+			end
+
+			toggleButton.MouseButton1Click:Connect(function()
+				toggle:Toggle()
+			end)
+
+			table.insert(self.ToggleList, toggle)
+			self.Toggles[toggle.Name] = toggle
+			updateModuleLayout(self)
+			updateCategorySize(self.Category)
+			refreshModuleDisplay(self)
+
+			return toggle
+		end
+
+		if type(moduleData.Toggles) == "table" then
+			for _, toggleData in ipairs(moduleData.Toggles) do
+				module:CreateToggle(toggleData)
+			end
+		end
+
 		moduleButton.MouseButton1Click:Connect(function()
 			module:Toggle()
+		end)
+
+		moduleButton.MouseButton2Click:Connect(function()
+			if #module.ToggleList > 0 then
+				module:SetExpanded(not module.Expanded)
+			end
+		end)
+
+		arrowButton.MouseButton1Click:Connect(function()
+			module:SetExpanded(not module.Expanded)
 		end)
 
 		task.spawn(function()
@@ -527,6 +718,7 @@ function TaskAPI:CreateCategory(categoryData)
 		self.Modules[module.Name] = module
 		TaskAPI.Modules[module.Name] = module
 
+		updateModuleLayout(module)
 		updateCategorySize(self)
 		refreshModuleDisplay(module)
 
