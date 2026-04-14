@@ -190,7 +190,7 @@ end
 getgenv().Taskium.SyncTaskiumFiles = SyncTaskiumFiles
 getgenv().Taskium.LastSyncReport = nil
 
-local InitialSyncReport = SyncTaskiumFiles(false)
+local InitialSyncReport = SyncTaskiumFiles(true)
 EnsureBootstrapFiles(InitialSyncReport)
 getgenv().Taskium.LastSyncReport = InitialSyncReport
 

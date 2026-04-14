@@ -1,7 +1,6 @@
 local TaskAPI = getgenv().TaskAPI or (getgenv().Taskium and getgenv().Taskium.API)
-local Taskium = getgenv().Taskium
 
-if not TaskAPI or not TaskAPI.Categories or not TaskAPI.Categories.Combat or not TaskAPI.Categories.Other then
+if not TaskAPI or not TaskAPI.Categories or not TaskAPI.Categories.Combat then
 	error("Required categories were not loaded before Games/Universal.lua")
 end
 
@@ -21,54 +20,9 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 		end
 	end,
 	ExtraText = function()
-		return "Hello"
+		return "Test"
 	end,
 	Tooltip = "This is a test module."
-})
-
-local Update
-Update = TaskAPI.Categories.Other:CreateModule({
-	Name = "Update",
-	Function = function(enabled)
-		if not enabled then
-			return
-		end
-
-		if not Taskium or type(Taskium.SyncTaskiumFiles) ~= "function" then
-			error("Taskium updater is not available")
-		end
-
-		local report = Taskium.SyncTaskiumFiles(true)
-		local createdFolders = #report.CreatedFolders
-		local createdFiles = #report.CreatedFiles
-		local updatedFiles = #report.UpdatedFiles
-
-		if createdFolders > 0 then
-			TaskAPI.Notification("Taskium", ("Created %d folder(s)."):format(createdFolders), 3, "Info")
-		end
-
-		if createdFiles > 0 or updatedFiles > 0 then
-			TaskAPI.Notification("Taskium", ("Updated %d file(s), added %d file(s)."):format(updatedFiles, createdFiles), 4, "Success")
-
-			if type(Taskium.RestartTaskium) == "function" then
-				task.defer(function()
-					Taskium.RestartTaskium()
-				end)
-			end
-		else
-			TaskAPI.Notification("Taskium", "No file updates found.", 3, "Info")
-		end
-
-		task.defer(function()
-			if Update and Update.Enabled then
-				Update:SetEnabled(false)
-			end
-		end)
-	end,
-	ExtraText = function()
-		return "Sync"
-	end,
-	Tooltip = "Downloads updated Taskium files from GitHub."
 })
 
 return TaskAPI
