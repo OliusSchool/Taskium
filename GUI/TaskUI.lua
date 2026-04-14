@@ -728,6 +728,7 @@ function TaskAPI:CreateCategory(categoryData)
 			local toggle = {
 				Name = toggleData.Name,
 				Enabled = false,
+				Active = false,
 				Function = toggleData.Function,
 				Tooltip = toggleData.Tooltip,
 				Button = toggleButton,
@@ -737,14 +738,20 @@ function TaskAPI:CreateCategory(categoryData)
 				ControlHeight = 30
 			}
 
-			function toggle:ApplyCurrentState()
+			function toggle:ApplyCurrentState(forceCallback)
 				refreshToggleDisplay(self)
 
 				if not self.Function or not self.Module then
+					self.Active = false
 					return
 				end
 
 				local shouldRun = self.Module.Enabled and self.Enabled
+				if not forceCallback and self.Active == shouldRun then
+					return
+				end
+
+				self.Active = shouldRun
 				local ok, err = pcall(self.Function, shouldRun)
 				if not ok then
 					warn(("TaskAPI toggle '%s' failed: %s"):format(self.Name, tostring(err)))
@@ -765,7 +772,13 @@ function TaskAPI:CreateCategory(categoryData)
 				end
 
 				self.Enabled = state
-				self:ApplyCurrentState()
+				refreshToggleDisplay(self)
+
+				if self.Module and self.Module.Enabled then
+					self:ApplyCurrentState()
+				else
+					self.Active = false
+				end
 			end
 
 			function toggle:Toggle()
