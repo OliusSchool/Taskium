@@ -380,6 +380,20 @@ local function refreshModuleDisplay(module)
 	module.ArrowButton.Text = module.Expanded and "v" or ">"
 end
 
+local function refreshToggleDisplay(toggle)
+	if toggle.Button == nil or toggle.Button.Parent == nil then
+		return
+	end
+
+	local moduleEnabled = toggle.Module and toggle.Module.Enabled
+	local toggleEnabled = moduleEnabled and toggle.Enabled
+
+	toggle.Button.BackgroundColor3 = toggleEnabled and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
+	toggle.NameLabel.TextColor3 = moduleEnabled and (toggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)) or Color3.fromRGB(110, 110, 110)
+	toggle.StateLabel.Text = toggleEnabled and "On" or "Off"
+	toggle.StateLabel.TextColor3 = moduleEnabled and (toggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)) or Color3.fromRGB(110, 110, 110)
+end
+
 function TaskAPI:CreateCategory(categoryData)
 	if not categoryData or type(categoryData.Name) ~= "string" or categoryData.Name == "" then
 		error("TaskAPI:CreateCategory requires a category name")
@@ -641,7 +655,15 @@ function TaskAPI:CreateCategory(categoryData)
 			end
 
 			if not self.Enabled then
+				for _, toggle in ipairs(self.ToggleList) do
+					toggle:SetEnabled(false)
+				end
+
 				self:Cleanup()
+			end
+
+			for _, toggle in ipairs(self.ToggleList) do
+				refreshToggleDisplay(toggle)
 			end
 		end
 
@@ -722,15 +744,18 @@ function TaskAPI:CreateCategory(categoryData)
 
 			function toggle:SetEnabled(state)
 				state = not not state
+				if state and (not self.Module or not self.Module.Enabled) then
+					refreshToggleDisplay(self)
+					return
+				end
+
 				if self.Enabled == state then
+					refreshToggleDisplay(self)
 					return
 				end
 
 				self.Enabled = state
-				self.Button.BackgroundColor3 = self.Enabled and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
-				self.NameLabel.TextColor3 = self.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
-				self.StateLabel.Text = self.Enabled and "On" or "Off"
-				self.StateLabel.TextColor3 = self.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
+				refreshToggleDisplay(self)
 
 				if self.Function then
 					local ok, err = pcall(self.Function, self.Enabled)
@@ -747,6 +772,11 @@ function TaskAPI:CreateCategory(categoryData)
 			end
 
 			function toggle:Toggle()
+				if not self.Module or not self.Module.Enabled then
+					refreshToggleDisplay(self)
+					return
+				end
+
 				self:SetEnabled(not self.Enabled)
 			end
 
@@ -759,6 +789,7 @@ function TaskAPI:CreateCategory(categoryData)
 			updateModuleLayout(self)
 			updateCategorySize(self.Category)
 			refreshModuleDisplay(self)
+			refreshToggleDisplay(toggle)
 
 			return toggle
 		end
