@@ -653,16 +653,12 @@ function TaskAPI:CreateCategory(categoryData)
 				end
 			end
 
-			if not self.Enabled then
-				for _, toggle in ipairs(self.ToggleList) do
-					toggle:SetEnabled(false)
-				end
-
-				self:Cleanup()
+			for _, toggle in ipairs(self.ToggleList) do
+				toggle:ApplyCurrentState()
 			end
 
-			for _, toggle in ipairs(self.ToggleList) do
-				refreshToggleDisplay(toggle)
+			if not self.Enabled then
+				self:Cleanup()
 			end
 		end
 
@@ -741,41 +737,38 @@ function TaskAPI:CreateCategory(categoryData)
 				ControlHeight = 30
 			}
 
-			function toggle:SetEnabled(state)
-				state = not not state
-				if state and (not self.Module or not self.Module.Enabled) then
-					refreshToggleDisplay(self)
+			function toggle:ApplyCurrentState()
+				refreshToggleDisplay(self)
+
+				if not self.Function or not self.Module then
 					return
 				end
 
+				local shouldRun = self.Module.Enabled and self.Enabled
+				local ok, err = pcall(self.Function, shouldRun)
+				if not ok then
+					warn(("TaskAPI toggle '%s' failed: %s"):format(self.Name, tostring(err)))
+					TaskAPI.Notification({
+						Title = "Taskium",
+						Message = tostring(err),
+						Duration = 4,
+						Type = "Error"
+					})
+				end
+			end
+
+			function toggle:SetEnabled(state)
+				state = not not state
 				if self.Enabled == state then
 					refreshToggleDisplay(self)
 					return
 				end
 
 				self.Enabled = state
-				refreshToggleDisplay(self)
-
-				if self.Function then
-					local ok, err = pcall(self.Function, self.Enabled)
-					if not ok then
-						warn(("TaskAPI toggle '%s' failed: %s"):format(self.Name, tostring(err)))
-						TaskAPI.Notification({
-							Title = "Taskium",
-							Message = tostring(err),
-							Duration = 4,
-							Type = "Error"
-						})
-					end
-				end
+				self:ApplyCurrentState()
 			end
 
 			function toggle:Toggle()
-				if not self.Module or not self.Module.Enabled then
-					refreshToggleDisplay(self)
-					return
-				end
-
 				self:SetEnabled(not self.Enabled)
 			end
 
