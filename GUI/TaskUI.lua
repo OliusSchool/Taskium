@@ -233,18 +233,10 @@ function TaskAPI:Notify(notificationData)
 end
 
 local function updateCategorySize(category)
+	local moduleCount = #category.ModuleList
 	local moduleHeight = 35
 	local defaultHeight = category.DefaultSize.Y.Offset
-	local totalContentHeight = 0
-
-	for _, module in ipairs(category.ModuleList) do
-		totalContentHeight = totalContentHeight + moduleHeight
-		if module.Expanded then
-			totalContentHeight = totalContentHeight + (#module.ToggleList * moduleHeight)
-		end
-	end
-
-	local extraModules = math.max(0, math.ceil(math.max(0, totalContentHeight - moduleHeight) / moduleHeight))
+	local extraModules = math.max(0, moduleCount - 1)
 	local totalHeight = defaultHeight + (extraModules * moduleHeight)
 
 	category.MainFrame.Size = UDim2.new(
@@ -254,7 +246,7 @@ local function updateCategorySize(category)
 		totalHeight
 	)
 
-	category.ModulesHolder.Size = UDim2.new(1, 0, 0, totalContentHeight)
+	category.ModulesHolder.Size = UDim2.new(1, 0, 0, moduleCount * moduleHeight)
 	updateShadowSize(category)
 end
 
@@ -411,7 +403,7 @@ function TaskAPI:CreateCategory(categoryData)
 		moduleButton.TextXAlignment = Enum.TextXAlignment.Left
 		moduleButton.TextYAlignment = Enum.TextYAlignment.Center
 		moduleButton.Font = Enum.Font.GothamBold
-		moduleButton.ZIndex = 5
+		moduleButton.ZIndex = 4
 		moduleButton.Parent = self.ModulesHolder
 
 		local moduleBackground = Instance.new("Frame")
@@ -420,19 +412,19 @@ function TaskAPI:CreateCategory(categoryData)
 		moduleBackground.Position = UDim2.new(0, 0, 0, 0)
 		moduleBackground.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
 		moduleBackground.BorderSizePixel = 0
-		moduleBackground.ZIndex = 4
+		moduleBackground.ZIndex = 3
 		moduleBackground.Parent = moduleButton
 
 		local buttonPadding = Instance.new("UIPadding")
-		buttonPadding.PaddingLeft = UDim.new(0, 6)
-		buttonPadding.PaddingRight = UDim.new(0, 6)
+		buttonPadding.PaddingLeft = UDim.new(0, 10)
+		buttonPadding.PaddingRight = UDim.new(0, 10)
 		buttonPadding.Parent = moduleButton
 
 		local extraLabel = Instance.new("TextLabel")
 		extraLabel.Name = "ExtraText"
 		extraLabel.Size = UDim2.new(0, 60, 1, 0)
 		extraLabel.AnchorPoint = Vector2.new(1, 0)
-		extraLabel.Position = UDim2.new(1, -6, 0, 0)
+		extraLabel.Position = UDim2.new(1, -10, 0, 0)
 		extraLabel.BackgroundTransparency = 1
 		extraLabel.Text = ""
 		extraLabel.TextSize = 14
@@ -443,33 +435,15 @@ function TaskAPI:CreateCategory(categoryData)
 		extraLabel.ZIndex = 5
 		extraLabel.Parent = moduleButton
 
-		local togglesHolder = Instance.new("Frame")
-		togglesHolder.Name = "TogglesHolder"
-		togglesHolder.Size = UDim2.new(1, 0, 0, 0)
-		togglesHolder.Position = UDim2.new(0, 0, 0, 35)
-		togglesHolder.BackgroundTransparency = 1
-		togglesHolder.ClipsDescendants = true
-		togglesHolder.ZIndex = 4
-		togglesHolder.Parent = moduleButton
-
-		local togglesLayout = Instance.new("UIListLayout")
-		togglesLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		togglesLayout.Padding = UDim.new(0, 0)
-		togglesLayout.Parent = togglesHolder
-
 		local module = {
 			Name = moduleData.Name,
 			Enabled = false,
-			Expanded = false,
 			Function = moduleData.Function,
 			ExtraText = moduleData.ExtraText,
 			Tooltip = moduleData.Tooltip,
 			Button = moduleButton,
 			Background = moduleBackground,
 			ExtraLabel = extraLabel,
-			TogglesHolder = togglesHolder,
-			ToggleList = {},
-			Toggles = {},
 			Category = self,
 			Cleanups = {}
 		}
@@ -542,126 +516,8 @@ function TaskAPI:CreateCategory(categoryData)
 			self:SetEnabled(not self.Enabled)
 		end
 
-		function module:SetExpanded(state)
-			self.Expanded = not not state
-			self.TogglesHolder.Size = UDim2.new(1, 0, 0, self.Expanded and (#self.ToggleList * 35) or 0)
-			self.Button.Size = UDim2.new(1, 0, 0, 35 + (self.Expanded and (#self.ToggleList * 35) or 0))
-			updateCategorySize(self.Category)
-		end
-
-		function module:CreateToggle(toggleData)
-			if not toggleData or type(toggleData.Name) ~= "string" or toggleData.Name == "" then
-				error(("Module '%s' requires a valid toggle name"):format(self.Name))
-			end
-
-			if self.Toggles[toggleData.Name] then
-				error(("Toggle '%s' already exists in module '%s'"):format(toggleData.Name, self.Name))
-			end
-
-			if toggleData.Function ~= nil and type(toggleData.Function) ~= "function" then
-				error(("Toggle '%s' Function must be a function"):format(toggleData.Name))
-			end
-
-			local toggleButton = Instance.new("TextButton")
-			toggleButton.Name = toggleData.Name
-			toggleButton.Size = UDim2.new(1, 0, 0, 35)
-			toggleButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
-			toggleButton.BorderSizePixel = 0
-			toggleButton.AutoButtonColor = false
-			toggleButton.Text = toggleData.Name
-			toggleButton.TextSize = 14
-			toggleButton.TextColor3 = Color3.fromRGB(190, 190, 190)
-			toggleButton.TextXAlignment = Enum.TextXAlignment.Left
-			toggleButton.Font = Enum.Font.Gotham
-			toggleButton.ZIndex = 5
-			toggleButton.Parent = self.TogglesHolder
-
-			local togglePadding = Instance.new("UIPadding")
-			togglePadding.PaddingLeft = UDim.new(0, 20)
-			togglePadding.PaddingRight = UDim.new(0, 12)
-			togglePadding.Parent = toggleButton
-
-			local toggleStateLabel = Instance.new("TextLabel")
-			toggleStateLabel.Name = "ToggleState"
-			toggleStateLabel.Size = UDim2.new(0, 50, 1, 0)
-			toggleStateLabel.AnchorPoint = Vector2.new(1, 0)
-			toggleStateLabel.Position = UDim2.new(1, -10, 0, 0)
-			toggleStateLabel.BackgroundTransparency = 1
-			toggleStateLabel.Text = "Off"
-			toggleStateLabel.TextSize = 13
-			toggleStateLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
-			toggleStateLabel.TextXAlignment = Enum.TextXAlignment.Right
-			toggleStateLabel.Font = Enum.Font.Gotham
-			toggleStateLabel.ZIndex = 6
-			toggleStateLabel.Parent = toggleButton
-
-			local toggle = {
-				Name = toggleData.Name,
-				Enabled = false,
-				Function = toggleData.Function,
-				Tooltip = toggleData.Tooltip,
-				Button = toggleButton,
-				StateLabel = toggleStateLabel,
-				Module = self
-			}
-
-			function toggle:SetEnabled(state)
-				state = not not state
-				if self.Enabled == state then
-					return
-				end
-
-				self.Enabled = state
-				self.Button.BackgroundColor3 = self.Enabled and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
-				self.Button.TextColor3 = self.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
-				self.StateLabel.Text = self.Enabled and "On" or "Off"
-				self.StateLabel.TextColor3 = self.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
-
-				if self.Function then
-					local ok, err = pcall(self.Function, self.Enabled)
-					if not ok then
-						warn(("TaskAPI toggle '%s' failed: %s"):format(self.Name, tostring(err)))
-						TaskAPI.Notification({
-							Title = "Taskium",
-							Message = tostring(err),
-							Duration = 4,
-							Type = "Error"
-						})
-					end
-				end
-			end
-
-			function toggle:Toggle()
-				self:SetEnabled(not self.Enabled)
-			end
-
-			toggleButton.MouseButton1Click:Connect(function()
-				toggle:Toggle()
-			end)
-
-			table.insert(self.ToggleList, toggle)
-			self.Toggles[toggle.Name] = toggle
-			self.TogglesHolder.Size = UDim2.new(1, 0, 0, self.Expanded and (#self.ToggleList * 35) or 0)
-			self.Button.Size = UDim2.new(1, 0, 0, 35 + (self.Expanded and (#self.ToggleList * 35) or 0))
-			updateCategorySize(self.Category)
-
-			return toggle
-		end
-
-		if type(moduleData.Toggles) == "table" then
-			for _, toggleData in ipairs(moduleData.Toggles) do
-				module:CreateToggle(toggleData)
-			end
-		end
-
 		moduleButton.MouseButton1Click:Connect(function()
 			module:Toggle()
-		end)
-
-		moduleButton.MouseButton2Click:Connect(function()
-			if #module.ToggleList > 0 then
-				module:SetExpanded(not module.Expanded)
-			end
 		end)
 
 		task.spawn(function()

@@ -22,16 +22,7 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 	ExtraText = function()
 		return "Test"
 	end,
-	Tooltip = "This is a test module.",
-	Toggles = {
-		{
-			Name = "Toggle",
-			Function = function(callback)
-				print(callback, "toggle enabled!")
-			end,
-			Tooltip = "This is a test toggle."
-		}
-	}
+	Tooltip = "This is a test module."
 })
 
 return TaskAPI
