@@ -5,6 +5,7 @@ if not TaskAPI or not TaskAPI.Categories or not TaskAPI.Categories.Combat then
 end
 
 local TestModule
+local PrintSpeed = 20
 TestModule = TaskAPI.Categories.Combat:CreateModule({
 	Name = "TestModule",
 	Function = function(enabled)
@@ -15,12 +16,12 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 
 			repeat
 				print("repeat loop!")
-				task.wait(1)
+				task.wait(math.max(0.05, (41 - PrintSpeed) * 0.05))
 			until (not TestModule.Enabled)
 		end
 	end,
 	ExtraText = function()
-		return "Test"
+		return tostring(PrintSpeed)
 	end,
 	Tooltip = "This is a test module.",
 	Toggles = {
@@ -31,35 +32,17 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 			end,
 			Tooltip = "This is a test toggle."
 		}
-	}
-})
-
-local TestModuleA
-TestModuleA = TaskAPI.Categories.Combat:CreateModule({
-	Name = "TestModuleA",
-	Function = function(enabled)
-		print(enabled, "module state")
-
-		if enabled then
-			TestModule:Clean(Instance.new("Part"))
-
-			repeat
-				print("repeat loop!")
-				task.wait(1)
-			until (not TestModuleA.Enabled)
-		end
-	end,
-	ExtraText = function()
-		return "Test"
-	end,
-	Tooltip = "This is a test module.",
-	Toggles = {
+	},
+	Sliders = {
 		{
-			Name = "Toggle",
-			Function = function(callback)
-				print(callback, "toggle enabled!")
+			Name = "Print Speed",
+			Min = 1,
+			Max = 40,
+			Default = 20,
+			Function = function(value)
+				PrintSpeed = value
 			end,
-			Tooltip = "This is a test toggle."
+			Tooltip = "Adjusts the speed of the print."
 		}
 	}
 })

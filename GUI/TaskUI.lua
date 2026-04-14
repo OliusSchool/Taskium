@@ -131,13 +131,21 @@ end
 
 local function updateModuleLayout(module)
 	local rowHeight = 35
-	local toggleHeight = 30
-	local toggleCount = #module.ToggleList
-	local togglesHeight = module.Expanded and (toggleCount * toggleHeight) or 0
+	local optionsHeight = 0
 
-	module.TogglesHolder.Size = UDim2.new(1, 0, 0, togglesHeight)
-	module.Container.Size = UDim2.new(1, 0, 0, rowHeight + togglesHeight)
-	module.ArrowButton.Visible = toggleCount > 0
+	if module.Expanded then
+		for _, toggle in ipairs(module.ToggleList) do
+			optionsHeight = optionsHeight + (toggle.ControlHeight or 30)
+		end
+
+		for _, slider in ipairs(module.SliderList) do
+			optionsHeight = optionsHeight + (slider.ControlHeight or 46)
+		end
+	end
+
+	module.OptionsHolder.Size = UDim2.new(1, 0, 0, optionsHeight)
+	module.Container.Size = UDim2.new(1, 0, 0, rowHeight + optionsHeight)
+	module.ArrowButton.Visible = (#module.ToggleList + #module.SliderList) > 0
 	module.ArrowButton.Text = module.Expanded and "v" or ">"
 end
 
@@ -290,7 +298,7 @@ local function refreshModuleDisplay(module)
 
 	module.ExtraLabel.Text = extraText
 	module.NameLabel.Text = module.Name
-	module.ArrowButton.Visible = #module.ToggleList > 0
+	module.ArrowButton.Visible = (#module.ToggleList + #module.SliderList) > 0
 	module.ArrowButton.Text = module.Expanded and "v" or ">"
 end
 
@@ -476,20 +484,20 @@ function TaskAPI:CreateCategory(categoryData)
 		extraLabel.ZIndex = 5
 		extraLabel.Parent = moduleButton
 
-		local togglesHolder = Instance.new("Frame")
-		togglesHolder.Name = "TogglesHolder"
-		togglesHolder.Size = UDim2.new(1, 0, 0, 0)
-		togglesHolder.Position = UDim2.new(0, 0, 0, 35)
-		togglesHolder.BackgroundTransparency = 1
-		togglesHolder.BorderSizePixel = 0
-		togglesHolder.ClipsDescendants = true
-		togglesHolder.ZIndex = 4
-		togglesHolder.Parent = moduleContainer
+		local optionsHolder = Instance.new("Frame")
+		optionsHolder.Name = "OptionsHolder"
+		optionsHolder.Size = UDim2.new(1, 0, 0, 0)
+		optionsHolder.Position = UDim2.new(0, 0, 0, 35)
+		optionsHolder.BackgroundTransparency = 1
+		optionsHolder.BorderSizePixel = 0
+		optionsHolder.ClipsDescendants = true
+		optionsHolder.ZIndex = 4
+		optionsHolder.Parent = moduleContainer
 
-		local togglesLayout = Instance.new("UIListLayout")
-		togglesLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		togglesLayout.Padding = UDim.new(0, 0)
-		togglesLayout.Parent = togglesHolder
+		local optionsLayout = Instance.new("UIListLayout")
+		optionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		optionsLayout.Padding = UDim.new(0, 0)
+		optionsLayout.Parent = optionsHolder
 
 		local module = {
 			Name = moduleData.Name,
@@ -503,9 +511,11 @@ function TaskAPI:CreateCategory(categoryData)
 			NameLabel = nameLabel,
 			ArrowButton = arrowButton,
 			ExtraLabel = extraLabel,
-			TogglesHolder = togglesHolder,
+			OptionsHolder = optionsHolder,
 			ToggleList = {},
 			Toggles = {},
+			SliderList = {},
+			Sliders = {},
 			Category = self,
 			Cleanups = {}
 		}
@@ -606,7 +616,7 @@ function TaskAPI:CreateCategory(categoryData)
 			toggleButton.AutoButtonColor = false
 			toggleButton.Text = ""
 			toggleButton.ZIndex = 4
-			toggleButton.Parent = self.TogglesHolder
+			toggleButton.Parent = self.OptionsHolder
 
 			local toggleNameLabel = Instance.new("TextLabel")
 			toggleNameLabel.Name = "ToggleName"
@@ -645,7 +655,8 @@ function TaskAPI:CreateCategory(categoryData)
 				Button = toggleButton,
 				NameLabel = toggleNameLabel,
 				StateLabel = toggleStateLabel,
-				Module = self
+				Module = self,
+				ControlHeight = 30
 			}
 
 			function toggle:SetEnabled(state)
@@ -691,9 +702,203 @@ function TaskAPI:CreateCategory(categoryData)
 			return toggle
 		end
 
+		function module:CreateSlider(sliderData)
+			if not sliderData or type(sliderData.Name) ~= "string" or sliderData.Name == "" then
+				error(("Module '%s' requires a valid slider name"):format(self.Name))
+			end
+
+			if self.Sliders[sliderData.Name] then
+				error(("Slider '%s' already exists in module '%s'"):format(sliderData.Name, self.Name))
+			end
+
+			if sliderData.Function ~= nil and type(sliderData.Function) ~= "function" then
+				error(("Slider '%s' Function must be a function"):format(sliderData.Name))
+			end
+
+			local minValue = tonumber(sliderData.Min or sliderData.Minimum or 0) or 0
+			local maxValue = tonumber(sliderData.Max or sliderData.Maximum or 100) or 100
+			local defaultValue = tonumber(sliderData.Default or sliderData.Value or minValue) or minValue
+
+			if maxValue < minValue then
+				minValue, maxValue = maxValue, minValue
+			end
+
+			defaultValue = math.clamp(defaultValue, minValue, maxValue)
+
+			local sliderButton = Instance.new("TextButton")
+			sliderButton.Name = sliderData.Name
+			sliderButton.Size = UDim2.new(1, 0, 0, 46)
+			sliderButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			sliderButton.BorderSizePixel = 0
+			sliderButton.AutoButtonColor = false
+			sliderButton.Text = ""
+			sliderButton.ZIndex = 4
+			sliderButton.Parent = self.OptionsHolder
+
+			local sliderNameLabel = Instance.new("TextLabel")
+			sliderNameLabel.Name = "SliderName"
+			sliderNameLabel.Size = UDim2.new(1, -76, 0, 18)
+			sliderNameLabel.Position = UDim2.new(0, 18, 0, 5)
+			sliderNameLabel.BackgroundTransparency = 1
+			sliderNameLabel.Text = sliderData.Name
+			sliderNameLabel.TextSize = 14
+			sliderNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			sliderNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			sliderNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			sliderNameLabel.Font = Enum.Font.Gotham
+			sliderNameLabel.ZIndex = 5
+			sliderNameLabel.Parent = sliderButton
+
+			local sliderValueLabel = Instance.new("TextLabel")
+			sliderValueLabel.Name = "SliderValue"
+			sliderValueLabel.Size = UDim2.new(0, 50, 0, 18)
+			sliderValueLabel.AnchorPoint = Vector2.new(1, 0)
+			sliderValueLabel.Position = UDim2.new(1, -8, 0, 5)
+			sliderValueLabel.BackgroundTransparency = 1
+			sliderValueLabel.Text = tostring(defaultValue)
+			sliderValueLabel.TextSize = 13
+			sliderValueLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			sliderValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+			sliderValueLabel.TextYAlignment = Enum.TextYAlignment.Center
+			sliderValueLabel.Font = Enum.Font.Gotham
+			sliderValueLabel.ZIndex = 5
+			sliderValueLabel.Parent = sliderButton
+
+			local sliderTrack = Instance.new("Frame")
+			sliderTrack.Name = "SliderTrack"
+			sliderTrack.Size = UDim2.new(1, -24, 0, 4)
+			sliderTrack.Position = UDim2.new(0, 12, 0, 31)
+			sliderTrack.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+			sliderTrack.BorderSizePixel = 0
+			sliderTrack.ZIndex = 5
+			sliderTrack.Parent = sliderButton
+
+			local sliderFill = Instance.new("Frame")
+			sliderFill.Name = "SliderFill"
+			sliderFill.Size = UDim2.new(0, 0, 1, 0)
+			sliderFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			sliderFill.BorderSizePixel = 0
+			sliderFill.ZIndex = 6
+			sliderFill.Parent = sliderTrack
+
+			local sliderKnob = Instance.new("Frame")
+			sliderKnob.Name = "SliderKnob"
+			sliderKnob.Size = UDim2.new(0, 8, 0, 8)
+			sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+			sliderKnob.Position = UDim2.new(0, 0, 0.5, 0)
+			sliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			sliderKnob.BorderSizePixel = 0
+			sliderKnob.ZIndex = 7
+			sliderKnob.Parent = sliderTrack
+
+			local sliderKnobCorner = Instance.new("UICorner")
+			sliderKnobCorner.CornerRadius = UDim.new(1, 0)
+			sliderKnobCorner.Parent = sliderKnob
+
+			local slider = {
+				Name = sliderData.Name,
+				Min = minValue,
+				Max = maxValue,
+				Value = defaultValue,
+				Function = sliderData.Function,
+				Tooltip = sliderData.Tooltip,
+				Button = sliderButton,
+				NameLabel = sliderNameLabel,
+				ValueLabel = sliderValueLabel,
+				Track = sliderTrack,
+				Fill = sliderFill,
+				Knob = sliderKnob,
+				Module = self,
+				ControlHeight = 46
+			}
+
+			local function setSliderVisuals(value)
+				local alpha = 0
+				if slider.Max > slider.Min then
+					alpha = (value - slider.Min) / (slider.Max - slider.Min)
+				end
+
+				slider.ValueLabel.Text = tostring(value)
+				slider.Fill.Size = UDim2.new(alpha, 0, 1, 0)
+				slider.Knob.Position = UDim2.new(alpha, 0, 0.5, 0)
+			end
+
+			function slider:SetValue(value, skipCallback)
+				value = math.clamp(math.floor((tonumber(value) or self.Value) + 0.5), self.Min, self.Max)
+				if self.Value == value then
+					setSliderVisuals(value)
+					return
+				end
+
+				self.Value = value
+				setSliderVisuals(value)
+
+				if not skipCallback and self.Function then
+					local ok, err = pcall(self.Function, self.Value)
+					if not ok then
+						warn(("TaskAPI slider '%s' failed: %s"):format(self.Name, tostring(err)))
+						TaskAPI.Notification({
+							Title = "Taskium",
+							Message = tostring(err),
+							Duration = 4,
+							Type = "Error"
+						})
+					end
+				end
+			end
+
+			local draggingSlider = false
+
+			local function setFromMousePosition(mouseX)
+				local alpha = math.clamp((mouseX - slider.Track.AbsolutePosition.X) / slider.Track.AbsoluteSize.X, 0, 1)
+				local value = slider.Min + ((slider.Max - slider.Min) * alpha)
+				slider:SetValue(value)
+			end
+
+			sliderButton.MouseButton1Down:Connect(function(mouseX)
+				draggingSlider = true
+				setFromMousePosition(mouseX)
+			end)
+
+			InputService.InputChanged:Connect(function(input)
+				if draggingSlider and input.UserInputType == Enum.UserInputType.MouseMovement then
+					setFromMousePosition(input.Position.X)
+				end
+			end)
+
+			InputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+					draggingSlider = false
+				end
+			end)
+
+			table.insert(self.SliderList, slider)
+			self.Sliders[slider.Name] = slider
+			updateModuleLayout(self)
+			updateCategorySize(self.Category)
+			setSliderVisuals(defaultValue)
+
+			if sliderData.Function then
+				task.defer(function()
+					local ok, err = pcall(sliderData.Function, defaultValue)
+					if not ok then
+						warn(("TaskAPI slider '%s' failed: %s"):format(slider.Name, tostring(err)))
+					end
+				end)
+			end
+
+			return slider
+		end
+
 		if type(moduleData.Toggles) == "table" then
 			for _, toggleData in ipairs(moduleData.Toggles) do
 				module:CreateToggle(toggleData)
+			end
+		end
+
+		if type(moduleData.Sliders) == "table" then
+			for _, sliderData in ipairs(moduleData.Sliders) do
+				module:CreateSlider(sliderData)
 			end
 		end
 
@@ -702,7 +907,7 @@ function TaskAPI:CreateCategory(categoryData)
 		end)
 
 		moduleButton.MouseButton2Click:Connect(function()
-			if #module.ToggleList > 0 then
+			if (#module.ToggleList + #module.SliderList) > 0 then
 				module:SetExpanded(not module.Expanded)
 			end
 		end)
