@@ -411,7 +411,7 @@ function TaskAPI:CreateCategory(categoryData)
 		moduleButton.TextXAlignment = Enum.TextXAlignment.Left
 		moduleButton.TextYAlignment = Enum.TextYAlignment.Center
 		moduleButton.Font = Enum.Font.GothamBold
-		moduleButton.ZIndex = 4
+		moduleButton.ZIndex = 5
 		moduleButton.Parent = self.ModulesHolder
 
 		local moduleBackground = Instance.new("Frame")
@@ -420,19 +420,19 @@ function TaskAPI:CreateCategory(categoryData)
 		moduleBackground.Position = UDim2.new(0, 0, 0, 0)
 		moduleBackground.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
 		moduleBackground.BorderSizePixel = 0
-		moduleBackground.ZIndex = 3
+		moduleBackground.ZIndex = 4
 		moduleBackground.Parent = moduleButton
 
 		local buttonPadding = Instance.new("UIPadding")
-		buttonPadding.PaddingLeft = UDim.new(0, 10)
-		buttonPadding.PaddingRight = UDim.new(0, 10)
+		buttonPadding.PaddingLeft = UDim.new(0, 6)
+		buttonPadding.PaddingRight = UDim.new(0, 6)
 		buttonPadding.Parent = moduleButton
 
 		local extraLabel = Instance.new("TextLabel")
 		extraLabel.Name = "ExtraText"
 		extraLabel.Size = UDim2.new(0, 60, 1, 0)
 		extraLabel.AnchorPoint = Vector2.new(1, 0)
-		extraLabel.Position = UDim2.new(1, -10, 0, 0)
+		extraLabel.Position = UDim2.new(1, -6, 0, 0)
 		extraLabel.BackgroundTransparency = 1
 		extraLabel.Text = ""
 		extraLabel.TextSize = 14

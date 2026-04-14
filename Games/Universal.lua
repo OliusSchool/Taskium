@@ -25,7 +25,7 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 	Tooltip = "This is a test module.",
 	Toggles = {
 		{
-			Name = "Custom Properties",
+			Name = "Toggle",
 			Function = function(callback)
 				print(callback, "toggle enabled!")
 			end,
