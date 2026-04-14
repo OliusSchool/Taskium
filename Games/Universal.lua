@@ -35,7 +35,7 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 })
 
 local TestModuleA
-TestModuleA = TaskAPI.Categories.Render:CreateModule({
+TestModuleA = TaskAPI.Categories.Combat:CreateModule({
 	Name = "TestModuleA",
 	Function = function(enabled)
 		print(enabled, "module state")
