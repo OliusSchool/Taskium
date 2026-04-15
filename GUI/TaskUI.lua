@@ -306,7 +306,7 @@ local function updateShadowSize(category)
 	local widthOffset = category.MainFrame.Size.X.Offset
 	local heightOffset = category.MainFrame.Size.Y.Offset
 
-	category.SEffect.Size = UDim2.new(0, widthOffset + 25, 0, heightOffset + 23)
+	category.ShadowEffect.Size = UDim2.new(0, widthOffset + 25, 0, heightOffset + 23)
 	category.ContainerFrame.Size = category.MainFrame.Size
 end
 
@@ -570,14 +570,14 @@ function TaskAPI:CreateCategory(categoryData)
 	mainFrameCorner.CornerRadius = UDim.new(0, 10)
 	mainFrameCorner.Parent = mainFrame
 
-	local sEffect = Instance.new("ImageLabel")
-	sEffect.Name = "SEffect"
-	sEffect.Size = UDim2.new(0, 190, 0, 105)
-	sEffect.Position = UDim2.new(0, -13, 0, -11)
-	sEffect.BackgroundTransparency = 1
-	sEffect.Image = TaskAssets.Shadow
-	sEffect.ZIndex = 1
-	sEffect.Parent = containerFrame
+	local shadowEffect = Instance.new("ImageLabel")
+	shadowEffect.Name = "ShadowEffect"
+	shadowEffect.Size = UDim2.new(0, 190, 0, 105)
+	shadowEffect.Position = UDim2.new(0, -13, 0, -11)
+	shadowEffect.BackgroundTransparency = 1
+	shadowEffect.Image = TaskAssets.Shadow
+	shadowEffect.ZIndex = 1
+	shadowEffect.Parent = containerFrame
 
 	local categoryFrame = Instance.new("ImageLabel")
 	categoryFrame.Name = "CategoryFrame"
@@ -624,7 +624,7 @@ function TaskAPI:CreateCategory(categoryData)
 		ContainerFrame = containerFrame,
 		MainFrame = mainFrame,
 		TaskFrame = containerFrame,
-		SEffect = sEffect,
+		ShadowEffect = shadowEffect,
 		CategoryFrame = categoryFrame,
 		CategoryLabel = categoryLabel,
 		ModulesHolder = modulesHolder,
@@ -635,6 +635,10 @@ function TaskAPI:CreateCategory(categoryData)
 
 	modulesLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 		updateCategorySize(category)
+	end)
+
+	mainFrame:GetPropertyChangedSignal("Size"):Connect(function()
+		updateShadowSize(category)
 	end)
 
 	function category:CreateModule(moduleData)
