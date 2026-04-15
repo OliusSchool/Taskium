@@ -4,6 +4,7 @@ local RawGitUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
 local RepoApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
 
 local RootFolder = "Taskium"
+local SyncStatePath = RootFolder .. "/Client/SyncState.json"
 local Taskium = getgenv().Taskium or {}
 getgenv().Taskium = Taskium
 
@@ -16,13 +17,13 @@ local BootstrapFiles = {
 
 local Folders = {
 	"Taskium",
-	"Taskium/Client",
-	"Taskium/GUI",
-	"Taskium/Games",
-	"Taskium/Scripts",
 	"Taskium/Assets",
 	"Taskium/Assets/GUI",
-	"Taskium/Assets/Icons"
+	"Taskium/Assets/Icons",
+	"Taskium/Client",
+	"Taskium/Games",
+	"Taskium/GUI",
+	"Taskium/Scripts"
 }
 
 local function HttpRequest(url)
@@ -59,9 +60,14 @@ local function CreateSyncReport()
 		CreatedFolders = {},
 		CreatedFiles = {},
 		UpdatedFiles = {},
+		PreservedFiles = {},
 		FailedFiles = {}
 	}
 end
+
+local SyncState = {
+	FileHashes = {}
+}
 
 local function EnsureFolder(path, report)
 	if not isfolder(path) then
@@ -72,15 +78,45 @@ local function EnsureFolder(path, report)
 	end
 end
 
+local function ComputeHash(content)
+	local hash = 2166136261
+
+	for index = 1, #content do
+		hash = bit32.bxor(hash, string.byte(content, index))
+		hash = (hash * 16777619) % 4294967296
+	end
+
+	return string.format("%08x", hash)
+end
+
+local function LoadSyncState()
+	EnsureFolder(RootFolder)
+	EnsureFolder(RootFolder .. "/Client")
+
+	if isfile(SyncStatePath) then
+		local success, decoded = pcall(function()
+			return HttpService:JSONDecode(readfile(SyncStatePath))
+		end)
+
+		if success and type(decoded) == "table" then
+			SyncState = decoded
+		end
+	end
+
+	SyncState.FileHashes = SyncState.FileHashes or {}
+end
+
+local function SaveSyncState()
+	EnsureFolder(RootFolder)
+	EnsureFolder(RootFolder .. "/Client")
+	writefile(SyncStatePath, HttpService:JSONEncode(SyncState))
+end
+
 local function DownloadFile(path, forceUpdate, report)
 	local url = RawGitUrl .. path
 	local savePath = RootFolder .. "/" .. path
 	local fileExists = isfile(savePath)
 	local parentFolder = GetParentFolder(savePath)
-
-	if fileExists and not forceUpdate then
-		return true
-	end
 
 	if parentFolder then
 		EnsureFolder(parentFolder, report)
@@ -89,15 +125,34 @@ local function DownloadFile(path, forceUpdate, report)
 	local response = HttpRequest(url)
 
 	if response.StatusCode == 200 then
+		local remoteHash = ComputeHash(response.Body)
 		local shouldWrite = true
 
 		if fileExists then
 			local oldContent = readfile(savePath)
-			shouldWrite = oldContent ~= response.Body
+			local localHash = ComputeHash(oldContent)
+			local syncedHash = SyncState.FileHashes[path]
+
+			if localHash == remoteHash then
+				shouldWrite = false
+			elseif not forceUpdate then
+				if syncedHash and localHash ~= syncedHash then
+					shouldWrite = false
+					if report then
+						table.insert(report.PreservedFiles, savePath)
+					end
+				elseif not syncedHash then
+					shouldWrite = false
+					if report then
+						table.insert(report.PreservedFiles, savePath)
+					end
+				end
+			end
 		end
 
 		if shouldWrite then
 			writefile(savePath, response.Body)
+			SyncState.FileHashes[path] = remoteHash
 			if report then
 				if fileExists then
 					table.insert(report.UpdatedFiles, savePath)
@@ -105,6 +160,8 @@ local function DownloadFile(path, forceUpdate, report)
 					table.insert(report.CreatedFiles, savePath)
 				end
 			end
+		elseif fileExists and isfile(savePath) then
+			SyncState.FileHashes[path] = ComputeHash(readfile(savePath))
 		end
 
 		return true
@@ -162,6 +219,8 @@ local function SyncTaskiumFiles(forceUpdate)
 		DownloadFile(file, forceUpdate, report)
 	end
 
+	SaveSyncState()
+
 	Taskium.LastSyncReport = report
 	return report
 end
@@ -176,6 +235,8 @@ local function EnsureBootstrapFiles(report)
 			end
 		end
 	end
+
+	SaveSyncState()
 end
 
 local function ExecuteFile(path)
@@ -231,7 +292,9 @@ Taskium.ExecuteFile = ExecuteFile
 Taskium.RestartTaskium = RestartTaskium
 Taskium.LastSyncReport = nil
 
-local InitialSyncReport = SyncTaskiumFiles(true)
+LoadSyncState()
+
+local InitialSyncReport = SyncTaskiumFiles(false)
 EnsureBootstrapFiles(InitialSyncReport)
 Taskium.LastSyncReport = InitialSyncReport
 
