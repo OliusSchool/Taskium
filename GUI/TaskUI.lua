@@ -653,6 +653,7 @@ function TaskAPI:CreateCategory(categoryData)
 			ConfigKey = buildConfigKey(self.Name, moduleData.Name),
 			Enabled = false,
 			Expanded = false,
+			RunId = 0,
 			Function = moduleData.Function,
 			Tooltip = moduleData.Tooltip,
 			Container = moduleContainer,
@@ -680,6 +681,18 @@ function TaskAPI:CreateCategory(categoryData)
 			end
 		end
 
+		function module:GetRunId()
+			return self.RunId
+		end
+
+		function module:IsActive(runId)
+			if runId == nil then
+				return self.Enabled
+			end
+
+			return self.Enabled and self.RunId == runId
+		end
+
 		function module:SetEnabled(state, options)
 			options = options or {}
 			state = not not state
@@ -688,6 +701,8 @@ function TaskAPI:CreateCategory(categoryData)
 			end
 
 			self.Enabled = state
+			self.RunId = self.RunId + 1
+			local currentRunId = self.RunId
 			refreshModuleDisplay(self)
 
 			if not options.SkipConfig then
@@ -706,7 +721,7 @@ function TaskAPI:CreateCategory(categoryData)
 			if self.Function then
 				if self.Enabled then
 					task.spawn(function()
-						local ok, err = pcall(self.Function, true)
+						local ok, err = pcall(self.Function, true, currentRunId, self)
 						if not ok then
 							warn(("TaskAPI module '%s' failed: %s"):format(self.Name, tostring(err)))
 							self.Enabled = false
@@ -722,7 +737,7 @@ function TaskAPI:CreateCategory(categoryData)
 						end
 					end)
 				else
-					local ok, err = pcall(self.Function, false)
+					local ok, err = pcall(self.Function, false, currentRunId, self)
 					if not ok then
 						warn(("TaskAPI module '%s' disable failed: %s"):format(self.Name, tostring(err)))
 						TaskAPI.Notification({

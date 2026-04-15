@@ -8,7 +8,7 @@ local TestModule
 local PrintSpeed = 20
 TestModule = TaskAPI.Categories.Combat:CreateModule({
 	Name = "TestModule",
-	Function = function(enabled)
+	Function = function(enabled, runId, module)
 		print(enabled, "module state")
 
 		if enabled then
@@ -17,7 +17,7 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 			repeat
 				print("repeat loop!")
 				task.wait(math.max(0.05, (41 - PrintSpeed) * 0.05))
-			until (not TestModule.Enabled)
+			until (not module:IsActive(runId))
 		end
 	end,
 	Tooltip = "This is a test module.",
