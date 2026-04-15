@@ -310,15 +310,52 @@ local function updateShadowSize(category)
 	category.ContainerFrame.Size = category.MainFrame.Size
 end
 
-local function updateModuleLayout(module)
+local function tweenYSize(instance, targetHeight, tweenStore, tweenKey)
+	if not instance then
+		return
+	end
+
+	if tweenStore and tweenKey and tweenStore[tweenKey] then
+		tweenStore[tweenKey]:Cancel()
+		tweenStore[tweenKey] = nil
+	end
+
+	local tween = TweenService:Create(
+		instance,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{
+			Size = UDim2.new(instance.Size.X.Scale, instance.Size.X.Offset, 0, targetHeight)
+		}
+	)
+
+	if tweenStore and tweenKey then
+		tweenStore[tweenKey] = tween
+	end
+
+	tween.Completed:Connect(function()
+		if tweenStore and tweenKey and tweenStore[tweenKey] == tween then
+			tweenStore[tweenKey] = nil
+		end
+	end)
+
+	tween:Play()
+end
+
+local function updateModuleLayout(module, animate)
 	local rowHeight = 35
 	local optionsHeight = 0
 	if module.Expanded and module.OptionsLayout then
 		optionsHeight = module.OptionsLayout.AbsoluteContentSize.Y
 	end
 
-	module.OptionsHolder.Size = UDim2.new(1, 0, 0, optionsHeight)
-	module.Container.Size = UDim2.new(1, 0, 0, rowHeight + optionsHeight)
+	if animate then
+		tweenYSize(module.OptionsHolder, optionsHeight, module.Tweens, "OptionsHolder")
+		tweenYSize(module.Container, rowHeight + optionsHeight, module.Tweens, "Container")
+	else
+		module.OptionsHolder.Size = UDim2.new(1, 0, 0, optionsHeight)
+		module.Container.Size = UDim2.new(1, 0, 0, rowHeight + optionsHeight)
+	end
+
 	module.ArrowButton.Visible = (#module.ToggleList + #module.SliderList + #module.DropdownList) > 0
 	module.ArrowButton.Text = module.Expanded and "v" or ">"
 end
@@ -738,7 +775,8 @@ function TaskAPI:CreateCategory(categoryData)
 			DropdownList = {},
 			Dropdowns = {},
 			Category = self,
-			Cleanups = {}
+			Cleanups = {},
+			Tweens = {}
 		}
 
 		optionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -842,7 +880,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 		function module:SetExpanded(state)
 			self.Expanded = not not state
-			updateModuleLayout(self)
+			updateModuleLayout(self, true)
 			updateCategorySize(self.Category)
 			refreshModuleDisplay(self)
 		end
@@ -1296,14 +1334,15 @@ function TaskAPI:CreateCategory(categoryData)
 				ListHolder = listHolder,
 				Options = {},
 				Module = self,
-				ControlHeight = 30
+				ControlHeight = 30,
+				Tweens = {}
 			}
 
 			for _, option in ipairs(dropdownData.List) do
 				table.insert(dropdown.List, tostring(option))
 			end
 
-			local function updateDropdownDisplay()
+			local function updateDropdownDisplay(animate)
 				dropdown.ValueLabel.Text = tostring(dropdown.Value or "")
 				dropdown.ArrowButton.Text = dropdown.Expanded and "v" or ">"
 
@@ -1312,8 +1351,15 @@ function TaskAPI:CreateCategory(categoryData)
 				if dropdown.Expanded and #dropdown.Options > 0 then
 					totalHeight = #dropdown.Options * optionHeight
 				end
-				dropdown.ListHolder.Size = UDim2.new(1, 0, 0, totalHeight)
-				dropdown.Container.Size = UDim2.new(1, 0, 0, 30 + totalHeight)
+
+				if animate then
+					tweenYSize(dropdown.ListHolder, totalHeight, dropdown.Tweens, "ListHolder")
+					tweenYSize(dropdown.Container, 30 + totalHeight, dropdown.Tweens, "Container")
+				else
+					dropdown.ListHolder.Size = UDim2.new(1, 0, 0, totalHeight)
+					dropdown.Container.Size = UDim2.new(1, 0, 0, 30 + totalHeight)
+				end
+
 				dropdown.ControlHeight = 30 + totalHeight
 
 				for _, optionButton in ipairs(dropdown.Options) do
@@ -1328,7 +1374,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 			function dropdown:SetExpanded(state)
 				self.Expanded = not not state
-				updateDropdownDisplay()
+				updateDropdownDisplay(true)
 				updateModuleLayout(self.Module)
 				updateCategorySize(self.Module.Category)
 				refreshModuleDisplay(self.Module)
@@ -1351,7 +1397,7 @@ function TaskAPI:CreateCategory(categoryData)
 				end
 
 				if self.Value == matchedValue then
-					updateDropdownDisplay()
+					updateDropdownDisplay(false)
 					if not skipCallback and options.ForceCallback and self.Function then
 						local ok, err = pcall(self.Function, self.Value)
 						if not ok then
@@ -1368,7 +1414,7 @@ function TaskAPI:CreateCategory(categoryData)
 				end
 
 				self.Value = matchedValue
-				updateDropdownDisplay()
+				updateDropdownDisplay(false)
 
 				if not options.SkipConfig then
 					setConfigValue("dropdown", self.ConfigKey, self.Value)
@@ -1423,11 +1469,11 @@ function TaskAPI:CreateCategory(categoryData)
 				table.insert(dropdown.Options, optionButton)
 			end
 
-			dropdownButton.MouseButton1Click:Connect(function()
+			dropdownButton.MouseButton2Click:Connect(function()
 				dropdown:SetExpanded(not dropdown.Expanded)
 			end)
 
-			dropdownArrow.MouseButton1Click:Connect(function()
+			dropdownArrow.MouseButton2Click:Connect(function()
 				dropdown:SetExpanded(not dropdown.Expanded)
 			end)
 
@@ -1441,7 +1487,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 			table.insert(self.DropdownList, dropdown)
 			self.Dropdowns[dropdown.Name] = dropdown
-			updateDropdownDisplay()
+			updateDropdownDisplay(false)
 			updateModuleLayout(self)
 			updateCategorySize(self.Category)
 			refreshModuleDisplay(self)
