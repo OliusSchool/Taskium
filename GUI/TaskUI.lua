@@ -313,19 +313,8 @@ end
 local function updateModuleLayout(module)
 	local rowHeight = 35
 	local optionsHeight = 0
-
-	if module.Expanded then
-		for _, toggle in ipairs(module.ToggleList) do
-			optionsHeight = optionsHeight + (toggle.ControlHeight or 30)
-		end
-
-		for _, slider in ipairs(module.SliderList) do
-			optionsHeight = optionsHeight + (slider.ControlHeight or 46)
-		end
-
-		for _, dropdown in ipairs(module.DropdownList) do
-			optionsHeight = optionsHeight + (dropdown.ControlHeight or 30)
-		end
+	if module.Expanded and module.OptionsLayout then
+		optionsHeight = module.OptionsLayout.AbsoluteContentSize.Y
 	end
 
 	module.OptionsHolder.Size = UDim2.new(1, 0, 0, optionsHeight)
@@ -488,8 +477,12 @@ local function updateCategorySize(category)
 	local minimumContentHeight = 35
 	local bottomPadding = 7
 
-	for _, module in ipairs(category.ModuleList) do
-		totalContentHeight = totalContentHeight + module.Container.Size.Y.Offset
+	if category.ModulesLayout then
+		totalContentHeight = category.ModulesLayout.AbsoluteContentSize.Y
+	else
+		for _, module in ipairs(category.ModuleList) do
+			totalContentHeight = totalContentHeight + module.Container.Size.Y.Offset
+		end
 	end
 
 	totalContentHeight = math.max(totalContentHeight, minimumContentHeight)
@@ -635,9 +628,14 @@ function TaskAPI:CreateCategory(categoryData)
 		CategoryFrame = categoryFrame,
 		CategoryLabel = categoryLabel,
 		ModulesHolder = modulesHolder,
+		ModulesLayout = modulesLayout,
 		ModuleList = {},
 		Modules = {}
 	}
+
+	modulesLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		updateCategorySize(category)
+	end)
 
 	function category:CreateModule(moduleData)
 		if not moduleData or type(moduleData.Name) ~= "string" or moduleData.Name == "" then
@@ -728,6 +726,7 @@ function TaskAPI:CreateCategory(categoryData)
 			NameLabel = nameLabel,
 			ArrowButton = arrowButton,
 			OptionsHolder = optionsHolder,
+			OptionsLayout = optionsLayout,
 			ToggleList = {},
 			Toggles = {},
 			SliderList = {},
@@ -737,6 +736,11 @@ function TaskAPI:CreateCategory(categoryData)
 			Category = self,
 			Cleanups = {}
 		}
+
+		optionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			updateModuleLayout(module)
+			updateCategorySize(module.Category)
+		end)
 
 		function module:Clean(item)
 			table.insert(self.Cleanups, item)
