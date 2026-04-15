@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local InputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local LogService = game:GetService("LogService")
 local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 
@@ -62,6 +63,22 @@ local function setConfigValue(kind, key, value)
 	end
 
 	return value
+end
+
+local function getClipboardSetter()
+	if type(setclipboard) == "function" then
+		return setclipboard
+	end
+
+	if type(toclipboard) == "function" then
+		return toclipboard
+	end
+
+	if Clipboard and type(Clipboard.set) == "function" then
+		return Clipboard.set
+	end
+
+	return nil
 end
 
 local function shutdownAPI(api)
@@ -157,6 +174,7 @@ TaskAPI.ScreenGui = ScreenGui
 TaskAPI.BlurEffect = BlurEffect
 TaskAPI.NotificationGui = NotificationGui
 TaskAPI.NotificationsContainer = NotificationsContainer
+TaskAPI.Connections = {}
 
 local TooltipFrame = Instance.new("Frame")
 TooltipFrame.Name = "ModuleTooltip"
@@ -304,11 +322,15 @@ local function updateModuleLayout(module)
 		for _, slider in ipairs(module.SliderList) do
 			optionsHeight = optionsHeight + (slider.ControlHeight or 46)
 		end
+
+		for _, dropdown in ipairs(module.DropdownList) do
+			optionsHeight = optionsHeight + (dropdown.ControlHeight or 30)
+		end
 	end
 
 	module.OptionsHolder.Size = UDim2.new(1, 0, 0, optionsHeight)
 	module.Container.Size = UDim2.new(1, 0, 0, rowHeight + optionsHeight)
-	module.ArrowButton.Visible = (#module.ToggleList + #module.SliderList) > 0
+	module.ArrowButton.Visible = (#module.ToggleList + #module.SliderList + #module.DropdownList) > 0
 	module.ArrowButton.Text = module.Expanded and "v" or ">"
 end
 
@@ -318,7 +340,9 @@ local function normalizeNotificationData(title, message, duration, notificationT
 			Title = tostring(title.Title or title.Name or "Notification"),
 			Message = tostring(title.Message or "No message has been set for this notification."),
 			Duration = tonumber(title.Duration) or 3,
-			Type = title.Type or "Client"
+			Type = title.Type or "Client",
+			CopyText = title.CopyText,
+			ClickToCopy = not not title.ClickToCopy
 		}
 	end
 
@@ -326,7 +350,9 @@ local function normalizeNotificationData(title, message, duration, notificationT
 		Title = tostring(title or "Notification"),
 		Message = tostring(message or "No message has been set for this notification."),
 		Duration = tonumber(duration) or 3,
-		Type = notificationType or "Client"
+		Type = notificationType or "Client",
+		CopyText = nil,
+		ClickToCopy = false
 	}
 end
 
@@ -383,6 +409,27 @@ function TaskAPI.Notification(title, message, duration, notificationType)
 	messageLabel.ZIndex = 11
 	messageLabel.Parent = notificationFrame
 
+	local clickButton = Instance.new("TextButton")
+	clickButton.Name = "ClickArea"
+	clickButton.Size = UDim2.new(1, 0, 1, 0)
+	clickButton.BackgroundTransparency = 1
+	clickButton.BorderSizePixel = 0
+	clickButton.AutoButtonColor = false
+	clickButton.Text = ""
+	clickButton.ZIndex = 12
+	clickButton.Active = notificationData.ClickToCopy
+	clickButton.Visible = notificationData.ClickToCopy
+	clickButton.Parent = notificationFrame
+
+	if notificationData.ClickToCopy then
+		clickButton.MouseButton1Click:Connect(function()
+			local clipboardSetter = getClipboardSetter()
+			if clipboardSetter then
+				clipboardSetter(tostring(notificationData.CopyText or notificationData.Message))
+			end
+		end)
+	end
+
 	table.insert(TaskAPI.Notifications, holder)
 
 	local slideInTween = TweenService:Create(notificationFrame, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
@@ -413,6 +460,30 @@ end
 
 function TaskAPI:Notify(notificationData)
 	return TaskAPI.Notification(notificationData)
+end
+
+local function getConsoleNotificationType(messageType)
+	if messageType == Enum.MessageType.MessageError then
+		return "Error"
+	end
+
+	if messageType == Enum.MessageType.MessageWarning then
+		return "Warning"
+	end
+
+	return "Info"
+end
+
+local function getConsoleNotificationTitle(messageType)
+	if messageType == Enum.MessageType.MessageError then
+		return "Console Error"
+	end
+
+	if messageType == Enum.MessageType.MessageWarning then
+		return "Console Warning"
+	end
+
+	return "Console"
 end
 
 local function updateCategorySize(category)
@@ -449,7 +520,7 @@ local function refreshModuleDisplay(module)
 	module.NameLabel.TextColor3 = module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 205)
 	module.ArrowButton.TextColor3 = module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
 	module.NameLabel.Text = module.Name
-	module.ArrowButton.Visible = (#module.ToggleList + #module.SliderList) > 0
+	module.ArrowButton.Visible = (#module.ToggleList + #module.SliderList + #module.DropdownList) > 0
 	module.ArrowButton.Text = module.Expanded and "v" or ">"
 end
 
@@ -665,6 +736,8 @@ function TaskAPI:CreateCategory(categoryData)
 			Toggles = {},
 			SliderList = {},
 			Sliders = {},
+			DropdownList = {},
+			Dropdowns = {},
 			Category = self,
 			Cleanups = {}
 		}
@@ -1109,6 +1182,258 @@ function TaskAPI:CreateCategory(categoryData)
 			return slider
 		end
 
+		function module:CreateDropdown(dropdownData)
+			if not dropdownData or type(dropdownData.Name) ~= "string" or dropdownData.Name == "" then
+				error(("Module '%s' requires a valid dropdown name"):format(self.Name))
+			end
+
+			if self.Dropdowns[dropdownData.Name] then
+				error(("Dropdown '%s' already exists in module '%s'"):format(dropdownData.Name, self.Name))
+			end
+
+			if dropdownData.Function ~= nil and type(dropdownData.Function) ~= "function" then
+				error(("Dropdown '%s' Function must be a function"):format(dropdownData.Name))
+			end
+
+			if type(dropdownData.List) ~= "table" or #dropdownData.List == 0 then
+				error(("Dropdown '%s' requires a non-empty List"):format(dropdownData.Name))
+			end
+
+			local dropdownContainer = Instance.new("Frame")
+			dropdownContainer.Name = dropdownData.Name .. "_Dropdown"
+			dropdownContainer.Size = UDim2.new(1, 0, 0, 30)
+			dropdownContainer.BackgroundTransparency = 1
+			dropdownContainer.BorderSizePixel = 0
+			dropdownContainer.ZIndex = 4
+			dropdownContainer.Parent = self.OptionsHolder
+
+			local dropdownButton = Instance.new("TextButton")
+			dropdownButton.Name = dropdownData.Name
+			dropdownButton.Size = UDim2.new(1, 0, 0, 30)
+			dropdownButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			dropdownButton.BorderSizePixel = 0
+			dropdownButton.AutoButtonColor = false
+			dropdownButton.Text = ""
+			dropdownButton.ZIndex = 4
+			dropdownButton.Parent = dropdownContainer
+
+			local dropdownNameLabel = Instance.new("TextLabel")
+			dropdownNameLabel.Name = "DropdownName"
+			dropdownNameLabel.Size = UDim2.new(0.5, -18, 1, 0)
+			dropdownNameLabel.Position = UDim2.new(0, 18, 0, 0)
+			dropdownNameLabel.BackgroundTransparency = 1
+			dropdownNameLabel.Text = dropdownData.Name
+			dropdownNameLabel.TextSize = 14
+			dropdownNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			dropdownNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			dropdownNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			dropdownNameLabel.Font = Enum.Font.Gotham
+			dropdownNameLabel.ZIndex = 5
+			dropdownNameLabel.Parent = dropdownButton
+
+			local dropdownValueLabel = Instance.new("TextLabel")
+			dropdownValueLabel.Name = "DropdownValue"
+			dropdownValueLabel.Size = UDim2.new(0.5, -34, 1, 0)
+			dropdownValueLabel.AnchorPoint = Vector2.new(1, 0)
+			dropdownValueLabel.Position = UDim2.new(1, -24, 0, 0)
+			dropdownValueLabel.BackgroundTransparency = 1
+			dropdownValueLabel.Text = ""
+			dropdownValueLabel.TextSize = 13
+			dropdownValueLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			dropdownValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+			dropdownValueLabel.TextYAlignment = Enum.TextYAlignment.Center
+			dropdownValueLabel.Font = Enum.Font.Gotham
+			dropdownValueLabel.ZIndex = 5
+			dropdownValueLabel.Parent = dropdownButton
+
+			local dropdownArrow = Instance.new("TextButton")
+			dropdownArrow.Name = "DropdownArrow"
+			dropdownArrow.Size = UDim2.new(0, 18, 1, 0)
+			dropdownArrow.AnchorPoint = Vector2.new(1, 0)
+			dropdownArrow.Position = UDim2.new(1, -6, 0, 0)
+			dropdownArrow.BackgroundTransparency = 1
+			dropdownArrow.AutoButtonColor = false
+			dropdownArrow.Text = ">"
+			dropdownArrow.TextSize = 14
+			dropdownArrow.TextColor3 = Color3.fromRGB(170, 170, 170)
+			dropdownArrow.Font = Enum.Font.GothamBold
+			dropdownArrow.ZIndex = 6
+			dropdownArrow.Parent = dropdownButton
+
+			local listHolder = Instance.new("Frame")
+			listHolder.Name = "ListHolder"
+			listHolder.Size = UDim2.new(1, 0, 0, 0)
+			listHolder.Position = UDim2.new(0, 0, 0, 30)
+			listHolder.BackgroundTransparency = 1
+			listHolder.BorderSizePixel = 0
+			listHolder.ClipsDescendants = true
+			listHolder.ZIndex = 4
+			listHolder.Parent = dropdownContainer
+
+			local listLayout = Instance.new("UIListLayout")
+			listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			listLayout.Padding = UDim.new(0, 0)
+			listLayout.Parent = listHolder
+
+			local dropdown = {
+				Name = dropdownData.Name,
+				ConfigKey = buildConfigKey(self.ConfigKey, dropdownData.Name),
+				List = {},
+				Value = nil,
+				Expanded = false,
+				Function = dropdownData.Function,
+				Tooltip = dropdownData.Tooltip,
+				Container = dropdownContainer,
+				Button = dropdownButton,
+				NameLabel = dropdownNameLabel,
+				ValueLabel = dropdownValueLabel,
+				ArrowButton = dropdownArrow,
+				ListHolder = listHolder,
+				Options = {},
+				Module = self,
+				ControlHeight = 30
+			}
+
+			for _, option in ipairs(dropdownData.List) do
+				table.insert(dropdown.List, tostring(option))
+			end
+
+			local function updateDropdownDisplay()
+				dropdown.ValueLabel.Text = tostring(dropdown.Value or "")
+				dropdown.ArrowButton.Text = dropdown.Expanded and "v" or ">"
+
+				local optionHeight = 28
+				local totalHeight = dropdown.Expanded and (#dropdown.Options * optionHeight) or 0
+				dropdown.ListHolder.Size = UDim2.new(1, 0, 0, totalHeight)
+				dropdown.Container.Size = UDim2.new(1, 0, 0, 30 + totalHeight)
+				dropdown.ControlHeight = 30 + totalHeight
+
+				for _, optionButton in ipairs(dropdown.Options) do
+					local isSelected = optionButton.OptionValue == dropdown.Value
+					optionButton.BackgroundColor3 = isSelected and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
+					optionButton.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
+				end
+			end
+
+			function dropdown:SetExpanded(state)
+				self.Expanded = not not state
+				updateDropdownDisplay()
+				updateModuleLayout(self.Module)
+				updateCategorySize(self.Module.Category)
+				refreshModuleDisplay(self.Module)
+			end
+
+			function dropdown:SetValue(value, skipCallback, options)
+				options = options or {}
+				value = tostring(value)
+
+				local matchedValue = nil
+				for _, optionValue in ipairs(self.List) do
+					if optionValue == value then
+						matchedValue = optionValue
+						break
+					end
+				end
+
+				if matchedValue == nil then
+					return
+				end
+
+				if self.Value == matchedValue then
+					updateDropdownDisplay()
+					if not skipCallback and options.ForceCallback and self.Function then
+						local ok, err = pcall(self.Function, self.Value)
+						if not ok then
+							warn(("TaskAPI dropdown '%s' failed: %s"):format(self.Name, tostring(err)))
+							TaskAPI.Notification({
+								Title = "Taskium",
+								Message = tostring(err),
+								Duration = 4,
+								Type = "Error"
+							})
+						end
+					end
+					return
+				end
+
+				self.Value = matchedValue
+				updateDropdownDisplay()
+
+				if not options.SkipConfig then
+					setConfigValue("dropdown", self.ConfigKey, self.Value)
+				end
+
+				if not skipCallback and self.Function then
+					local ok, err = pcall(self.Function, self.Value)
+					if not ok then
+						warn(("TaskAPI dropdown '%s' failed: %s"):format(self.Name, tostring(err)))
+						TaskAPI.Notification({
+							Title = "Taskium",
+							Message = tostring(err),
+							Duration = 4,
+							Type = "Error"
+						})
+					end
+				end
+			end
+
+			for _, optionValue in ipairs(dropdown.List) do
+				local optionButton = Instance.new("TextButton")
+				optionButton.Name = optionValue
+				optionButton.Size = UDim2.new(1, 0, 0, 28)
+				optionButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+				optionButton.BorderSizePixel = 0
+				optionButton.AutoButtonColor = false
+				optionButton.Text = optionValue
+				optionButton.TextSize = 13
+				optionButton.TextColor3 = Color3.fromRGB(190, 190, 190)
+				optionButton.TextXAlignment = Enum.TextXAlignment.Left
+				optionButton.TextYAlignment = Enum.TextYAlignment.Center
+				optionButton.Font = Enum.Font.Gotham
+				optionButton.ZIndex = 5
+				optionButton.Parent = dropdown.ListHolder
+				optionButton.OptionValue = optionValue
+
+				optionButton.MouseButton1Click:Connect(function()
+					dropdown:SetValue(optionValue)
+					dropdown:SetExpanded(false)
+				end)
+
+				table.insert(dropdown.Options, optionButton)
+			end
+
+			dropdownButton.MouseButton1Click:Connect(function()
+				dropdown:SetExpanded(not dropdown.Expanded)
+			end)
+
+			dropdownArrow.MouseButton1Click:Connect(function()
+				dropdown:SetExpanded(not dropdown.Expanded)
+			end)
+
+			dropdownButton.MouseEnter:Connect(function()
+				showTooltip(dropdown.Tooltip)
+			end)
+
+			dropdownButton.MouseLeave:Connect(function()
+				hideTooltip()
+			end)
+
+			table.insert(self.DropdownList, dropdown)
+			self.Dropdowns[dropdown.Name] = dropdown
+			updateDropdownDisplay()
+			updateModuleLayout(self)
+			updateCategorySize(self.Category)
+			refreshModuleDisplay(self)
+
+			local defaultValue = tostring(dropdownData.Default or dropdown.List[1])
+			dropdown:SetValue(registerConfigValue("dropdown", dropdown.ConfigKey, defaultValue), false, {
+				SkipConfig = true,
+				ForceCallback = true
+			})
+
+			return dropdown
+		end
+
 		if type(moduleData.Toggles) == "table" then
 			for _, toggleData in ipairs(moduleData.Toggles) do
 				module:CreateToggle(toggleData)
@@ -1118,6 +1443,12 @@ function TaskAPI:CreateCategory(categoryData)
 		if type(moduleData.Sliders) == "table" then
 			for _, sliderData in ipairs(moduleData.Sliders) do
 				module:CreateSlider(sliderData)
+			end
+		end
+
+		if type(moduleData.Dropdowns) == "table" then
+			for _, dropdownData in ipairs(moduleData.Dropdowns) do
+				module:CreateDropdown(dropdownData)
 			end
 		end
 
@@ -1134,7 +1465,7 @@ function TaskAPI:CreateCategory(categoryData)
 		end)
 
 		moduleButton.MouseButton2Click:Connect(function()
-			if (#module.ToggleList + #module.SliderList) > 0 then
+			if (#module.ToggleList + #module.SliderList + #module.DropdownList) > 0 then
 				module:SetExpanded(not module.Expanded)
 			end
 		end)
@@ -1236,7 +1567,28 @@ InputService.InputChanged:Connect(function(input)
 	end
 end)
 
+table.insert(TaskAPI.Connections, LogService.MessageOut:Connect(function(message, messageType)
+	TaskAPI.Notification({
+		Title = getConsoleNotificationTitle(messageType),
+		Message = tostring(message),
+		Duration = messageType == Enum.MessageType.MessageError and 5 or 3,
+		Type = getConsoleNotificationType(messageType),
+		ClickToCopy = messageType == Enum.MessageType.MessageError,
+		CopyText = tostring(message)
+	})
+end))
+
 function TaskAPI:Shutdown()
+	if type(self.Connections) == "table" then
+		for index = #self.Connections, 1, -1 do
+			local connection = self.Connections[index]
+			if typeof(connection) == "RBXScriptConnection" and connection.Connected then
+				connection:Disconnect()
+			end
+			table.remove(self.Connections, index)
+		end
+	end
+
 	shutdownAPI(self)
 end
 
