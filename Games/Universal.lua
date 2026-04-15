@@ -6,7 +6,7 @@ end
 
 local TestModule
 local PrintSpeed = 20
-local MoveMode = "MoveDirection"
+local MoveMode = "Direct"
 TestModule = TaskAPI.Categories.Combat:CreateModule({
 	Name = "TestModule",
 	Function = function(enabled, runId, module)
@@ -46,7 +46,7 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 	Dropdowns = {
 		{
 			Name = "Move Mode",
-			List = { "MoveDirection", "Direct" },
+			List = { "InDirect", "Direct" },
 			Function = function(val)
 				MoveMode = val
 				print(val, "dropdown value changed")
