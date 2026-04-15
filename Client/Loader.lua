@@ -127,6 +127,7 @@ local function DownloadFile(path, forceUpdate, report)
 	if response.StatusCode == 200 then
 		local remoteHash = ComputeHash(response.Body)
 		local shouldWrite = true
+		local preservedLocalFile = false
 
 		if fileExists then
 			local oldContent = readfile(savePath)
@@ -138,11 +139,13 @@ local function DownloadFile(path, forceUpdate, report)
 			elseif not forceUpdate then
 				if syncedHash and localHash ~= syncedHash then
 					shouldWrite = false
+					preservedLocalFile = true
 					if report then
 						table.insert(report.PreservedFiles, savePath)
 					end
 				elseif not syncedHash then
 					shouldWrite = false
+					preservedLocalFile = true
 					if report then
 						table.insert(report.PreservedFiles, savePath)
 					end
@@ -160,7 +163,7 @@ local function DownloadFile(path, forceUpdate, report)
 					table.insert(report.CreatedFiles, savePath)
 				end
 			end
-		elseif fileExists and isfile(savePath) then
+		elseif fileExists and isfile(savePath) and not preservedLocalFile then
 			SyncState.FileHashes[path] = ComputeHash(readfile(savePath))
 		end
 
