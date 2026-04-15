@@ -1309,7 +1309,7 @@ function TaskAPI:CreateCategory(categoryData)
 				dropdown.ControlHeight = 30 + totalHeight
 
 				for _, optionButton in ipairs(dropdown.Options) do
-					local isSelected = optionButton.OptionValue == dropdown.Value
+					local isSelected = optionButton:GetAttribute("OptionValue") == dropdown.Value
 					optionButton.BackgroundColor3 = isSelected and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
 					optionButton.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
 				end
@@ -1391,8 +1391,8 @@ function TaskAPI:CreateCategory(categoryData)
 				optionButton.TextYAlignment = Enum.TextYAlignment.Center
 				optionButton.Font = Enum.Font.Gotham
 				optionButton.ZIndex = 5
+				optionButton:SetAttribute("OptionValue", optionValue)
 				optionButton.Parent = dropdown.ListHolder
-				optionButton.OptionValue = optionValue
 
 				optionButton.MouseButton1Click:Connect(function()
 					dropdown:SetValue(optionValue)
