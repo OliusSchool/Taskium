@@ -470,8 +470,6 @@ local function getConsoleNotificationType(messageType)
 	if messageType == Enum.MessageType.MessageWarning then
 		return "Warning"
 	end
-
-	return "Info"
 end
 
 local function getConsoleNotificationTitle(messageType)
@@ -482,8 +480,6 @@ local function getConsoleNotificationTitle(messageType)
 	if messageType == Enum.MessageType.MessageWarning then
 		return "Console Warning"
 	end
-
-	return "Console"
 end
 
 local function updateCategorySize(category)
@@ -1585,10 +1581,14 @@ InputService.InputChanged:Connect(function(input)
 end)
 
 table.insert(TaskAPI.Connections, LogService.MessageOut:Connect(function(message, messageType)
+	if messageType ~= Enum.MessageType.MessageError and messageType ~= Enum.MessageType.MessageWarning then
+		return
+	end
+
 	TaskAPI.Notification({
 		Title = getConsoleNotificationTitle(messageType),
 		Message = tostring(message),
-		Duration = messageType == Enum.MessageType.MessageError and 5 or 3,
+		Duration = 5,
 		Type = getConsoleNotificationType(messageType),
 		ClickToCopy = messageType == Enum.MessageType.MessageError,
 		CopyText = tostring(message)
