@@ -34,6 +34,34 @@ getgenv().Taskium = getgenv().Taskium or {}
 getgenv().Taskium.API = TaskAPI
 getgenv().TaskAPI = TaskAPI
 
+local TaskConfig = getgenv().Taskium and getgenv().Taskium.Config
+TaskAPI.Config = TaskConfig
+
+local function buildConfigKey(...)
+	local parts = { ... }
+	for index, value in ipairs(parts) do
+		parts[index] = tostring(value)
+	end
+
+	return table.concat(parts, "/")
+end
+
+local function registerConfigValue(kind, key, defaultValue)
+	if TaskConfig and type(TaskConfig.Register) == "function" then
+		return TaskConfig:Register(kind, key, defaultValue)
+	end
+
+	return defaultValue
+end
+
+local function setConfigValue(kind, key, value)
+	if TaskConfig and type(TaskConfig.Set) == "function" then
+		return TaskConfig:Set(kind, key, value)
+	end
+
+	return value
+end
+
 if PlayerGui:FindFirstChild("MainUI") then
 	PlayerGui.MainUI:Destroy()
 end
@@ -577,6 +605,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 		local module = {
 			Name = moduleData.Name,
+			ConfigKey = buildConfigKey(self.Name, moduleData.Name),
 			Enabled = false,
 			Expanded = false,
 			Function = moduleData.Function,
@@ -606,7 +635,8 @@ function TaskAPI:CreateCategory(categoryData)
 			end
 		end
 
-		function module:SetEnabled(state)
+		function module:SetEnabled(state, options)
+			options = options or {}
 			state = not not state
 			if self.Enabled == state then
 				return
@@ -615,12 +645,18 @@ function TaskAPI:CreateCategory(categoryData)
 			self.Enabled = state
 			refreshModuleDisplay(self)
 
-			TaskAPI.Notification({
-				Title = "Taskium",
-				Message = self.Name .. ": " .. (self.Enabled and "Enabled" or "Disabled"),
-				Duration = 3,
-				Type = self.Enabled and "Success" or "Info"
-			})
+			if not options.SkipConfig then
+				setConfigValue("module", self.ConfigKey, self.Enabled)
+			end
+
+			if not options.SkipNotify then
+				TaskAPI.Notification({
+					Title = "Taskium",
+					Message = self.Name .. ": " .. (self.Enabled and "Enabled" or "Disabled"),
+					Duration = 3,
+					Type = self.Enabled and "Success" or "Info"
+				})
+			end
 
 			if self.Function then
 				if self.Enabled then
@@ -630,6 +666,7 @@ function TaskAPI:CreateCategory(categoryData)
 							warn(("TaskAPI module '%s' failed: %s"):format(self.Name, tostring(err)))
 							self.Enabled = false
 							refreshModuleDisplay(self)
+							setConfigValue("module", self.ConfigKey, false)
 							self:Cleanup()
 							TaskAPI.Notification({
 								Title = "Taskium",
@@ -727,6 +764,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 			local toggle = {
 				Name = toggleData.Name,
+				ConfigKey = buildConfigKey(self.ConfigKey, toggleData.Name),
 				Enabled = false,
 				Value = false,
 				Active = false,
@@ -767,7 +805,8 @@ function TaskAPI:CreateCategory(categoryData)
 				end
 			end
 
-			function toggle:SetEnabled(state)
+			function toggle:SetEnabled(state, options)
+				options = options or {}
 				state = not not state
 				if self.Value == state then
 					refreshToggleDisplay(self)
@@ -776,6 +815,10 @@ function TaskAPI:CreateCategory(categoryData)
 
 				self.Value = state
 				refreshToggleDisplay(self)
+
+				if not options.SkipConfig then
+					setConfigValue("toggle", self.ConfigKey, self.Value)
+				end
 
 				if self.Module and self.Module.Enabled then
 					self:ApplyCurrentState()
@@ -798,6 +841,9 @@ function TaskAPI:CreateCategory(categoryData)
 			updateModuleLayout(self)
 			updateCategorySize(self.Category)
 			refreshModuleDisplay(self)
+			toggle.Value = registerConfigValue("toggle", toggle.ConfigKey, false)
+			toggle.Enabled = false
+			toggle.Active = false
 			refreshToggleDisplay(toggle)
 
 			return toggle
@@ -898,6 +944,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 			local slider = {
 				Name = sliderData.Name,
+				ConfigKey = buildConfigKey(self.ConfigKey, sliderData.Name),
 				Min = minValue,
 				Max = maxValue,
 				Value = defaultValue,
@@ -924,15 +971,32 @@ function TaskAPI:CreateCategory(categoryData)
 				slider.Knob.Position = UDim2.new(alpha, 0, 0.5, 0)
 			end
 
-			function slider:SetValue(value, skipCallback)
+			function slider:SetValue(value, skipCallback, options)
+				options = options or {}
 				value = math.clamp(math.floor((tonumber(value) or self.Value) + 0.5), self.Min, self.Max)
 				if self.Value == value then
 					setSliderVisuals(value)
+					if not skipCallback and options.ForceCallback and self.Function then
+						local ok, err = pcall(self.Function, self.Value)
+						if not ok then
+							warn(("TaskAPI slider '%s' failed: %s"):format(self.Name, tostring(err)))
+							TaskAPI.Notification({
+								Title = "Taskium",
+								Message = tostring(err),
+								Duration = 4,
+								Type = "Error"
+							})
+						end
+					end
 					return
 				end
 
 				self.Value = value
 				setSliderVisuals(value)
+
+				if not options.SkipConfig then
+					setConfigValue("slider", self.ConfigKey, self.Value)
+				end
 
 				if not skipCallback and self.Function then
 					local ok, err = pcall(self.Function, self.Value)
@@ -977,16 +1041,10 @@ function TaskAPI:CreateCategory(categoryData)
 			self.Sliders[slider.Name] = slider
 			updateModuleLayout(self)
 			updateCategorySize(self.Category)
-			setSliderVisuals(defaultValue)
-
-			if sliderData.Function then
-				task.defer(function()
-					local ok, err = pcall(sliderData.Function, defaultValue)
-					if not ok then
-						warn(("TaskAPI slider '%s' failed: %s"):format(slider.Name, tostring(err)))
-					end
-				end)
-			end
+			slider:SetValue(registerConfigValue("slider", slider.ConfigKey, defaultValue), false, {
+				SkipConfig = true,
+				ForceCallback = true
+			})
 
 			return slider
 		end
@@ -1039,6 +1097,14 @@ function TaskAPI:CreateCategory(categoryData)
 		updateModuleLayout(module)
 		updateCategorySize(self)
 		refreshModuleDisplay(module)
+
+		local savedModuleState = registerConfigValue("module", module.ConfigKey, false)
+		if savedModuleState then
+			module:SetEnabled(true, {
+				SkipConfig = true,
+				SkipNotify = true
+			})
+		end
 
 		return module
 	end
