@@ -197,6 +197,12 @@ end
 local function BootTaskium()
 	EnsureBootstrapFiles(Taskium.LastSyncReport or CreateSyncReport())
 
+	if Taskium.API and type(Taskium.API.Shutdown) == "function" then
+		pcall(function()
+			Taskium.API:Shutdown()
+		end)
+	end
+
 	local config = ExecuteFile("Taskium/Client/Config.lua")
 	Taskium.Config = config
 

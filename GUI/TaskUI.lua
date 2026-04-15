@@ -15,6 +15,8 @@ local TaskAPI = {
 	Version = { "1.0.0" }
 }
 
+local PreviousTaskAPI = getgenv().TaskAPI
+
 local TaskAssets = {
 	CategoryFrame = "rbxassetid://126645359069961",
 	Shadow = "rbxassetid://125043055375567",
@@ -60,6 +62,49 @@ local function setConfigValue(kind, key, value)
 	end
 
 	return value
+end
+
+local function shutdownAPI(api)
+	if type(api) ~= "table" then
+		return
+	end
+
+	local seenModules = {}
+
+	if type(api.Modules) == "table" then
+		for _, previousModule in pairs(api.Modules) do
+			if type(previousModule) == "table" and not seenModules[previousModule] then
+				seenModules[previousModule] = true
+
+				if type(previousModule.SetEnabled) == "function" then
+					pcall(function()
+						previousModule:SetEnabled(false, {
+							SkipConfig = true,
+							SkipNotify = true
+						})
+					end)
+				end
+
+				previousModule.Enabled = false
+
+				if type(previousModule.Cleanup) == "function" then
+					pcall(function()
+						previousModule:Cleanup()
+					end)
+				end
+			end
+		end
+	end
+
+	if type(api.BlurEffect) == "userdata" or typeof(api.BlurEffect) == "Instance" then
+		pcall(function()
+			api.BlurEffect.Enabled = false
+		end)
+	end
+end
+
+if PreviousTaskAPI and PreviousTaskAPI ~= TaskAPI then
+	shutdownAPI(PreviousTaskAPI)
 end
 
 if PlayerGui:FindFirstChild("MainUI") then
@@ -1175,5 +1220,9 @@ InputService.InputChanged:Connect(function(input)
 		updateTooltipPosition(input.Position)
 	end
 end)
+
+function TaskAPI:Shutdown()
+	shutdownAPI(self)
+end
 
 return TaskAPI
