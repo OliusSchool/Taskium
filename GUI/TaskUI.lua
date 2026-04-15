@@ -1100,10 +1100,14 @@ function TaskAPI:CreateCategory(categoryData)
 
 		local savedModuleState = registerConfigValue("module", module.ConfigKey, false)
 		if savedModuleState then
-			module:SetEnabled(true, {
-				SkipConfig = true,
-				SkipNotify = true
-			})
+			task.defer(function()
+				if module.Button and module.Button.Parent then
+					module:SetEnabled(true, {
+						SkipConfig = true,
+						SkipNotify = true
+					})
+				end
+			end)
 		end
 
 		return module
