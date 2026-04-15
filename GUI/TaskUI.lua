@@ -1217,10 +1217,6 @@ function TaskAPI:CreateCategory(categoryData)
 			dropdownButton.ZIndex = 4
 			dropdownButton.Parent = dropdownContainer
 
-			local dropdownButtonCorner = Instance.new("UICorner")
-			dropdownButtonCorner.CornerRadius = UDim.new(0, 10)
-			dropdownButtonCorner.Parent = dropdownButton
-
 			local dropdownNameLabel = Instance.new("TextLabel")
 			dropdownNameLabel.Name = "DropdownName"
 			dropdownNameLabel.Size = UDim2.new(0.5, -18, 1, 0)
