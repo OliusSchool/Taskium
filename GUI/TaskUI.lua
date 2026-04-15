@@ -145,7 +145,7 @@ ScreenGui.Parent = PlayerGui
 
 local BlurEffect = Instance.new("BlurEffect")
 BlurEffect.Name = "TaskUIBlur"
-BlurEffect.Size = 20
+BlurEffect.Size = 10
 BlurEffect.Enabled = false
 BlurEffect.Parent = Lighting
 
