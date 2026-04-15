@@ -1268,15 +1268,20 @@ function TaskAPI:CreateCategory(categoryData)
 			listHolder.Name = "ListHolder"
 			listHolder.Size = UDim2.new(1, 0, 0, 0)
 			listHolder.Position = UDim2.new(0, 0, 0, 30)
-			listHolder.BackgroundTransparency = 1
+			listHolder.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			listHolder.BackgroundTransparency = 0
 			listHolder.BorderSizePixel = 0
 			listHolder.ClipsDescendants = true
 			listHolder.ZIndex = 4
 			listHolder.Parent = dropdownContainer
 
+			local listHolderCorner = Instance.new("UICorner")
+			listHolderCorner.CornerRadius = UDim.new(0, 10)
+			listHolderCorner.Parent = listHolder
+
 			local listLayout = Instance.new("UIListLayout")
 			listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-			listLayout.Padding = UDim.new(0, 2)
+			listLayout.Padding = UDim.new(0, 0)
 			listLayout.Parent = listHolder
 
 			local dropdown = {
@@ -1306,11 +1311,10 @@ function TaskAPI:CreateCategory(categoryData)
 				dropdown.ValueLabel.Text = tostring(dropdown.Value or "")
 				dropdown.ArrowButton.Text = dropdown.Expanded and "v" or ">"
 
-				local optionHeight = 30
-				local optionSpacing = 2
+				local optionHeight = 28
 				local totalHeight = 0
 				if dropdown.Expanded and #dropdown.Options > 0 then
-					totalHeight = (#dropdown.Options * optionHeight) + ((#dropdown.Options - 1) * optionSpacing)
+					totalHeight = #dropdown.Options * optionHeight
 				end
 				dropdown.ListHolder.Size = UDim2.new(1, 0, 0, totalHeight)
 				dropdown.Container.Size = UDim2.new(1, 0, 0, 30 + totalHeight)
@@ -1389,29 +1393,17 @@ function TaskAPI:CreateCategory(categoryData)
 			end
 
 			for _, optionValue in ipairs(dropdown.List) do
-				local optionRow = Instance.new("Frame")
-				optionRow.Name = optionValue .. "_Row"
-				optionRow.Size = UDim2.new(1, 0, 0, 30)
-				optionRow.BackgroundTransparency = 1
-				optionRow.BorderSizePixel = 0
-				optionRow.ZIndex = 4
-				optionRow.Parent = dropdown.ListHolder
-
 				local optionButton = Instance.new("TextButton")
 				optionButton.Name = optionValue
-				optionButton.Size = UDim2.new(1, -24, 0, 28)
-				optionButton.Position = UDim2.new(0, 12, 0, 1)
+				optionButton.Size = UDim2.new(1, 0, 0, 28)
+				optionButton.Position = UDim2.new(0, 0, 0, 0)
 				optionButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
 				optionButton.BorderSizePixel = 0
 				optionButton.AutoButtonColor = false
 				optionButton.Text = ""
 				optionButton.ZIndex = 5
 				optionButton:SetAttribute("OptionValue", optionValue)
-				optionButton.Parent = optionRow
-
-				local optionButtonCorner = Instance.new("UICorner")
-				optionButtonCorner.CornerRadius = UDim.new(0, 10)
-				optionButtonCorner.Parent = optionButton
+				optionButton.Parent = dropdown.ListHolder
 
 				local optionLabel = Instance.new("TextLabel")
 				optionLabel.Name = "OptionLabel"
