@@ -8,7 +8,7 @@ local TestModule
 local PrintSpeed = 20
 local MoveMode = "Direct"
 TestModule = TaskAPI.Categories.Combat:CreateModule({
-	Name = "TestModuleA",
+	Name = "TestModuleB",
 	Function = function(enabled, runId, module)
 		print(enabled, "module state")
 
