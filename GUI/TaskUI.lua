@@ -1217,6 +1217,10 @@ function TaskAPI:CreateCategory(categoryData)
 			dropdownButton.ZIndex = 4
 			dropdownButton.Parent = dropdownContainer
 
+			local dropdownButtonCorner = Instance.new("UICorner")
+			dropdownButtonCorner.CornerRadius = UDim.new(0, 10)
+			dropdownButtonCorner.Parent = dropdownButton
+
 			local dropdownNameLabel = Instance.new("TextLabel")
 			dropdownNameLabel.Name = "DropdownName"
 			dropdownNameLabel.Size = UDim2.new(0.5, -18, 1, 0)
@@ -1272,7 +1276,7 @@ function TaskAPI:CreateCategory(categoryData)
 
 			local listLayout = Instance.new("UIListLayout")
 			listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-			listLayout.Padding = UDim.new(0, 0)
+			listLayout.Padding = UDim.new(0, 2)
 			listLayout.Parent = listHolder
 
 			local dropdown = {
@@ -1302,8 +1306,12 @@ function TaskAPI:CreateCategory(categoryData)
 				dropdown.ValueLabel.Text = tostring(dropdown.Value or "")
 				dropdown.ArrowButton.Text = dropdown.Expanded and "v" or ">"
 
-				local optionHeight = 28
-				local totalHeight = dropdown.Expanded and (#dropdown.Options * optionHeight) or 0
+				local optionHeight = 30
+				local optionSpacing = 2
+				local totalHeight = 0
+				if dropdown.Expanded and #dropdown.Options > 0 then
+					totalHeight = (#dropdown.Options * optionHeight) + ((#dropdown.Options - 1) * optionSpacing)
+				end
 				dropdown.ListHolder.Size = UDim2.new(1, 0, 0, totalHeight)
 				dropdown.Container.Size = UDim2.new(1, 0, 0, 30 + totalHeight)
 				dropdown.ControlHeight = 30 + totalHeight
@@ -1311,7 +1319,10 @@ function TaskAPI:CreateCategory(categoryData)
 				for _, optionButton in ipairs(dropdown.Options) do
 					local isSelected = optionButton:GetAttribute("OptionValue") == dropdown.Value
 					optionButton.BackgroundColor3 = isSelected and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
-					optionButton.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
+					local optionLabel = optionButton:FindFirstChild("OptionLabel")
+					if optionLabel then
+						optionLabel.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
+					end
 				end
 			end
 
@@ -1378,21 +1389,43 @@ function TaskAPI:CreateCategory(categoryData)
 			end
 
 			for _, optionValue in ipairs(dropdown.List) do
+				local optionRow = Instance.new("Frame")
+				optionRow.Name = optionValue .. "_Row"
+				optionRow.Size = UDim2.new(1, 0, 0, 30)
+				optionRow.BackgroundTransparency = 1
+				optionRow.BorderSizePixel = 0
+				optionRow.ZIndex = 4
+				optionRow.Parent = dropdown.ListHolder
+
 				local optionButton = Instance.new("TextButton")
 				optionButton.Name = optionValue
-				optionButton.Size = UDim2.new(1, 0, 0, 28)
+				optionButton.Size = UDim2.new(1, -24, 0, 28)
+				optionButton.Position = UDim2.new(0, 12, 0, 1)
 				optionButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
 				optionButton.BorderSizePixel = 0
 				optionButton.AutoButtonColor = false
-				optionButton.Text = optionValue
-				optionButton.TextSize = 13
-				optionButton.TextColor3 = Color3.fromRGB(190, 190, 190)
-				optionButton.TextXAlignment = Enum.TextXAlignment.Left
-				optionButton.TextYAlignment = Enum.TextYAlignment.Center
-				optionButton.Font = Enum.Font.Gotham
+				optionButton.Text = ""
 				optionButton.ZIndex = 5
 				optionButton:SetAttribute("OptionValue", optionValue)
-				optionButton.Parent = dropdown.ListHolder
+				optionButton.Parent = optionRow
+
+				local optionButtonCorner = Instance.new("UICorner")
+				optionButtonCorner.CornerRadius = UDim.new(0, 10)
+				optionButtonCorner.Parent = optionButton
+
+				local optionLabel = Instance.new("TextLabel")
+				optionLabel.Name = "OptionLabel"
+				optionLabel.Size = UDim2.new(1, -36, 1, 0)
+				optionLabel.Position = UDim2.new(0, 18, 0, 0)
+				optionLabel.BackgroundTransparency = 1
+				optionLabel.Text = optionValue
+				optionLabel.TextSize = 13
+				optionLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+				optionLabel.TextXAlignment = Enum.TextXAlignment.Left
+				optionLabel.TextYAlignment = Enum.TextYAlignment.Center
+				optionLabel.Font = Enum.Font.Gotham
+				optionLabel.ZIndex = 6
+				optionLabel.Parent = optionButton
 
 				optionButton.MouseButton1Click:Connect(function()
 					dropdown:SetValue(optionValue)
