@@ -1275,10 +1275,6 @@ function TaskAPI:CreateCategory(categoryData)
 			listHolder.ZIndex = 4
 			listHolder.Parent = dropdownContainer
 
-			local listHolderCorner = Instance.new("UICorner")
-			listHolderCorner.CornerRadius = UDim.new(0, 10)
-			listHolderCorner.Parent = listHolder
-
 			local listLayout = Instance.new("UIListLayout")
 			listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 			listLayout.Padding = UDim.new(0, 0)
