@@ -14,7 +14,7 @@ local ArraylistModule
 local PrintSpeed = 20
 local MoveMode = "Direct"
 TestModule = TaskAPI.Categories.Combat:CreateModule({
-	Name = "TestModule",
+	Name = "TestModuleA",
 	Function = function(enabled, runId, module)
 		print(enabled, "module state")
 
@@ -89,7 +89,7 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 		backgroundFrame.Name = "Background"
 		backgroundFrame.Size = UDim2.new(0, 0, 0, 0)
 		backgroundFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		backgroundFrame.BackgroundTransparency = 0.35
+		backgroundFrame.BackgroundTransparency = 0.58
 		backgroundFrame.BorderSizePixel = 0
 		backgroundFrame.Parent = rootFrame
 
@@ -105,6 +105,25 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 		listLayout.Padding = UDim.new(0, 0)
 		listLayout.Parent = entriesHolder
 
+		local sideLine = Instance.new("Frame")
+		sideLine.Name = "SideLine"
+		sideLine.AnchorPoint = Vector2.new(1, 0)
+		sideLine.Position = UDim2.new(1, 0, 0, 0)
+		sideLine.Size = UDim2.new(0, 3, 0, 0)
+		sideLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		sideLine.BorderSizePixel = 0
+		sideLine.Parent = rootFrame
+
+		local sideLineGradient = Instance.new("UIGradient")
+		sideLineGradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+		})
+		sideLineGradient.Rotation = 90
+		sideLineGradient.Parent = sideLine
+
+		local animatedGradients = {}
+
 		local function applyBlackToWhiteGradient(guiObject, rotation)
 			local gradient = Instance.new("UIGradient")
 			gradient.Color = ColorSequence.new({
@@ -113,6 +132,8 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 			})
 			gradient.Rotation = rotation or 0
 			gradient.Parent = guiObject
+			table.insert(animatedGradients, gradient)
+			return gradient
 		end
 
 		local function getEnabledModules()
@@ -148,14 +169,16 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 
 		local function renderArraylist()
 			clearEntries()
+			animatedGradients = {}
 
 			local enabledModules = getEnabledModules()
 			local maxWidth = 0
-			local rowHeight = 22
+			local rowHeight = 26
+			local textSize = 17
 
 			for _, listedModule in ipairs(enabledModules) do
-				local textBounds = TextService:GetTextSize(listedModule.Name, 14, Enum.Font.GothamBold, Vector2.new(1000, rowHeight))
-				maxWidth = math.max(maxWidth, textBounds.X + 28)
+				local textBounds = TextService:GetTextSize(listedModule.Name, textSize, Enum.Font.GothamBold, Vector2.new(1000, rowHeight))
+				maxWidth = math.max(maxWidth, textBounds.X + 34)
 			end
 
 			if maxWidth < 80 then
@@ -177,29 +200,26 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 				nameLabel.Position = UDim2.new(0, 0, 0, 0)
 				nameLabel.BackgroundTransparency = 1
 				nameLabel.Text = listedModule.Name
-				nameLabel.TextSize = 14
+				nameLabel.TextSize = textSize
 				nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 				nameLabel.TextXAlignment = Enum.TextXAlignment.Right
 				nameLabel.TextYAlignment = Enum.TextYAlignment.Center
 				nameLabel.Font = Enum.Font.GothamBold
 				nameLabel.Parent = row
 				applyBlackToWhiteGradient(nameLabel, 0)
-
-				local sideLine = Instance.new("Frame")
-				sideLine.Name = "SideLine"
-				sideLine.AnchorPoint = Vector2.new(1, 0)
-				sideLine.Position = UDim2.new(1, 0, 0, 0)
-				sideLine.Size = UDim2.new(0, 3, 1, 0)
-				sideLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				sideLine.BorderSizePixel = 0
-				sideLine.Parent = row
-				applyBlackToWhiteGradient(sideLine, 90)
 			end
 
 			local totalHeight = #enabledModules * rowHeight
 			rootFrame.Size = UDim2.new(0, maxWidth, 0, totalHeight)
 			entriesHolder.Size = UDim2.new(0, maxWidth, 0, totalHeight)
 			backgroundFrame.Size = UDim2.new(0, maxWidth, 0, totalHeight)
+			sideLine.Size = UDim2.new(0, 3, 0, totalHeight)
+
+			local gradientOffset = (tick() * 0.35) % 2 - 1
+			sideLineGradient.Offset = Vector2.new(gradientOffset, 0)
+			for _, gradient in ipairs(animatedGradients) do
+				gradient.Offset = Vector2.new(gradientOffset, 0)
+			end
 		end
 
 		repeat
