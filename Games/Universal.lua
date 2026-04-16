@@ -14,7 +14,7 @@ local ArraylistModule
 local PrintSpeed = 20
 local MoveMode = "Direct"
 TestModule = TaskAPI.Categories.Combat:CreateModule({
-	Name = "TestModuleA",
+	Name = "TestModule",
 	Function = function(enabled, runId, module)
 		print(enabled, "module state")
 
@@ -89,7 +89,7 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 		backgroundFrame.Name = "Background"
 		backgroundFrame.Size = UDim2.new(0, 0, 0, 0)
 		backgroundFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		backgroundFrame.BackgroundTransparency = 0.58
+		backgroundFrame.BackgroundTransparency = 1
 		backgroundFrame.BorderSizePixel = 0
 		backgroundFrame.Parent = rootFrame
 
@@ -114,11 +114,18 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 		sideLine.BorderSizePixel = 0
 		sideLine.Parent = rootFrame
 
+		local function createMovingGradient(gradient)
+			gradient.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0.00, Color3.fromRGB(0, 0, 0)),
+				ColorSequenceKeypoint.new(0.35, Color3.fromRGB(0, 0, 0)),
+				ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0.65, Color3.fromRGB(0, 0, 0)),
+				ColorSequenceKeypoint.new(1.00, Color3.fromRGB(0, 0, 0))
+			})
+		end
+
 		local sideLineGradient = Instance.new("UIGradient")
-		sideLineGradient.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
-		})
+		createMovingGradient(sideLineGradient)
 		sideLineGradient.Rotation = 90
 		sideLineGradient.Parent = sideLine
 
@@ -126,10 +133,7 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 
 		local function applyBlackToWhiteGradient(guiObject, rotation)
 			local gradient = Instance.new("UIGradient")
-			gradient.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
-			})
+			createMovingGradient(gradient)
 			gradient.Rotation = rotation or 0
 			gradient.Parent = guiObject
 			table.insert(animatedGradients, gradient)
@@ -173,12 +177,13 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 
 			local enabledModules = getEnabledModules()
 			local maxWidth = 0
-			local rowHeight = 26
-			local textSize = 17
+			local rowHeight = 28
+			local textSize = 18
+			local backgroundPadding = 24
 
 			for _, listedModule in ipairs(enabledModules) do
 				local textBounds = TextService:GetTextSize(listedModule.Name, textSize, Enum.Font.GothamBold, Vector2.new(1000, rowHeight))
-				maxWidth = math.max(maxWidth, textBounds.X + 34)
+				maxWidth = math.max(maxWidth, textBounds.X + backgroundPadding + 10)
 			end
 
 			if maxWidth < 80 then
@@ -186,6 +191,9 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 			end
 
 			for index, listedModule in ipairs(enabledModules) do
+				local textBounds = TextService:GetTextSize(listedModule.Name, textSize, Enum.Font.GothamBold, Vector2.new(1000, rowHeight))
+				local backgroundWidth = textBounds.X + backgroundPadding
+
 				local row = Instance.new("Frame")
 				row.Name = listedModule.Name
 				row.Size = UDim2.new(0, maxWidth, 0, rowHeight)
@@ -194,10 +202,21 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 				row.LayoutOrder = index
 				row.Parent = entriesHolder
 
+				local rowBackground = Instance.new("Frame")
+				rowBackground.Name = "RowBackground"
+				rowBackground.AnchorPoint = Vector2.new(1, 0)
+				rowBackground.Position = UDim2.new(1, -3, 0, 0)
+				rowBackground.Size = UDim2.new(0, backgroundWidth, 1, 0)
+				rowBackground.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+				rowBackground.BackgroundTransparency = 0.58
+				rowBackground.BorderSizePixel = 0
+				rowBackground.Parent = row
+
 				local nameLabel = Instance.new("TextLabel")
 				nameLabel.Name = "ModuleName"
-				nameLabel.Size = UDim2.new(1, -12, 1, 0)
-				nameLabel.Position = UDim2.new(0, 0, 0, 0)
+				nameLabel.Size = UDim2.new(0, backgroundWidth - 12, 1, 0)
+				nameLabel.AnchorPoint = Vector2.new(1, 0)
+				nameLabel.Position = UDim2.new(1, -9, 0, 0)
 				nameLabel.BackgroundTransparency = 1
 				nameLabel.Text = listedModule.Name
 				nameLabel.TextSize = textSize
@@ -215,7 +234,7 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 			backgroundFrame.Size = UDim2.new(0, maxWidth, 0, totalHeight)
 			sideLine.Size = UDim2.new(0, 3, 0, totalHeight)
 
-			local gradientOffset = (tick() * 0.35) % 2 - 1
+			local gradientOffset = (tick() * 0.85) % 2 - 1
 			sideLineGradient.Offset = Vector2.new(gradientOffset, 0)
 			for _, gradient in ipairs(animatedGradients) do
 				gradient.Offset = Vector2.new(gradientOffset, 0)
