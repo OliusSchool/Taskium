@@ -251,6 +251,4 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 	ToolTip = "Displays enabled modules in the top-right corner."
 })
 
-TaskAPI.Notification("Taskium", "Modules are successfully loaded!", 5, "Success")
-
 return TaskAPI
