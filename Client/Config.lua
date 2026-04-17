@@ -14,33 +14,33 @@ local Config = {
 	}
 }
 
-local function ensureFolder(path)
-	if not isfolder(path) then
-		makefolder(path)
+local function EnsureFolder(Path)
+	if not isfolder(Path) then
+		makefolder(Path)
 	end
 end
 
-local function deepCopy(value)
-	if type(value) ~= "table" then
-		return value
+local function DeepCopy(Value)
+	if type(Value) ~= "table" then
+		return Value
 	end
 
-	local copy = {}
-	for key, innerValue in pairs(value) do
-		copy[key] = deepCopy(innerValue)
+	local Copy = {}
+	for Key, InnerValue in pairs(Value) do
+		Copy[Key] = DeepCopy(InnerValue)
 	end
-	return copy
+	return Copy
 end
 
 function Config:Save()
-	ensureFolder(RootFolder)
-	ensureFolder(ClientFolder)
+	EnsureFolder(RootFolder)
+	EnsureFolder(ClientFolder)
 	writefile(self.Path, HttpService:JSONEncode(self.Data))
 end
 
 function Config:Load()
-	ensureFolder(RootFolder)
-	ensureFolder(ClientFolder)
+	EnsureFolder(RootFolder)
+	EnsureFolder(ClientFolder)
 
 	if isfile(self.Path) then
 		local success, decoded = pcall(function()
@@ -65,51 +65,51 @@ function Config:Load()
 	return self.Data
 end
 
-function Config:BuildKey(kind, ...)
-	local parts = { ... }
-	for index, value in ipairs(parts) do
-		parts[index] = tostring(value)
+function Config:BuildKey(Kind, ...)
+	local Parts = { ... }
+	for Index, Value in ipairs(Parts) do
+		Parts[Index] = tostring(Value)
 	end
 
-	return tostring(kind) .. "::" .. table.concat(parts, "/")
+	return tostring(Kind) .. "::" .. table.concat(Parts, "/")
 end
 
-function Config:Register(kind, key, defaultValue)
-	local store = self.Data.Controls
-	local fullKey = self:BuildKey(kind, key)
+function Config:Register(Kind, Key, DefaultValue)
+	local Store = self.Data.Controls
+	local FullKey = self:BuildKey(Kind, Key)
 
-	if store[fullKey] == nil then
-		store[fullKey] = deepCopy(defaultValue)
+	if Store[FullKey] == nil then
+		Store[FullKey] = DeepCopy(DefaultValue)
 		self:Save()
 	end
 
-	return deepCopy(store[fullKey])
+	return DeepCopy(Store[FullKey])
 end
 
-function Config:Get(kind, key, defaultValue)
-	local store = self.Data.Controls
-	local fullKey = self:BuildKey(kind, key)
-	local storedValue = store[fullKey]
+function Config:Get(Kind, Key, DefaultValue)
+	local Store = self.Data.Controls
+	local FullKey = self:BuildKey(Kind, Key)
+	local StoredValue = Store[FullKey]
 
-	if storedValue == nil then
-		return deepCopy(defaultValue)
+	if StoredValue == nil then
+		return DeepCopy(DefaultValue)
 	end
 
-	return deepCopy(storedValue)
+	return DeepCopy(StoredValue)
 end
 
-function Config:Set(kind, key, value)
-	local store = self.Data.Controls
-	local fullKey = self:BuildKey(kind, key)
-	store[fullKey] = deepCopy(value)
+function Config:Set(Kind, Key, Value)
+	local Store = self.Data.Controls
+	local FullKey = self:BuildKey(Kind, Key)
+	Store[FullKey] = DeepCopy(Value)
 	self:Save()
-	return deepCopy(value)
+	return DeepCopy(Value)
 end
 
-function Config:Remove(kind, key)
-	local store = self.Data.Controls
-	local fullKey = self:BuildKey(kind, key)
-	store[fullKey] = nil
+function Config:Remove(Kind, Key)
+	local Store = self.Data.Controls
+	local FullKey = self:BuildKey(Kind, Key)
+	Store[FullKey] = nil
 	self:Save()
 end
 

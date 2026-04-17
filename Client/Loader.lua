@@ -1,22 +1,23 @@
 local HttpService = game:GetService("HttpService")
 
-local RawGitUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
-local RepoApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
+local RawRepositoryUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
+local RepositoryContentsApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
 
-local RootFolder = "Taskium"
-local BaseFolder = RootFolder .. "/Client/Base"
-local SyncStatePath = RootFolder .. "/Client/SyncState.json"
+local WorkspaceRootFolder = "Taskium"
+local WorkspaceBaseFolder = WorkspaceRootFolder .. "/Client/Base"
+local SyncStateFilePath = WorkspaceRootFolder .. "/Client/SyncState.json"
+
 local Taskium = getgenv().Taskium or {}
 getgenv().Taskium = Taskium
 
-local BootstrapFiles = {
+local BootstrapFilePaths = {
 	"Client/Config.lua",
 	"GUI/TaskUI.lua",
 	"GUI/Categories.lua",
 	"Games/Universal.lua"
 }
 
-local Folders = {
+local RequiredFolderPaths = {
 	"Taskium",
 	"Taskium/Assets",
 	"Taskium/Assets/GUI",
@@ -28,36 +29,36 @@ local Folders = {
 	"Taskium/Scripts"
 }
 
-local function HttpRequest(url)
-	local response
+local function SendHttpRequest(RequestUrl)
+	local HttpResponse
 
 	if syn and syn.request then
-		response = syn.request({
-			Url = url,
+		HttpResponse = syn.request({
+			Url = RequestUrl,
 			Method = "GET"
 		})
 	elseif request then
-		response = request({
-			Url = url,
+		HttpResponse = request({
+			Url = RequestUrl,
 			Method = "GET"
 		})
 	elseif http_request then
-		response = http_request({
-			Url = url,
+		HttpResponse = http_request({
+			Url = RequestUrl,
 			Method = "GET"
 		})
 	else
 		error("Taskium loader requires syn.request, request, or http_request")
 	end
 
-	return response
+	return HttpResponse
 end
 
-local function GetParentFolder(path)
-	return path:match("^(.*)/[^/]+$")
+local function GetParentFolderPath(FilePath)
+	return FilePath:match("^(.*)/[^/]+$")
 end
 
-local function CreateSyncReport()
+local function CreateEmptySyncReport()
 	return {
 		CreatedFolders = {},
 		CreatedFiles = {},
@@ -72,37 +73,37 @@ local SyncState = {
 	FileHashes = {}
 }
 
-local function EnsureFolder(path, report)
-	if not isfolder(path) then
-		makefolder(path)
-		if report then
-			table.insert(report.CreatedFolders, path)
+local function EnsureFolderExists(FolderPath, SyncReport)
+	if not isfolder(FolderPath) then
+		makefolder(FolderPath)
+		if SyncReport then
+			table.insert(SyncReport.CreatedFolders, FolderPath)
 		end
 	end
 end
 
-local function ComputeHash(content)
-	local hash = 2166136261
+local function ComputeContentHash(FileContent)
+	local RunningHash = 2166136261
 
-	for index = 1, #content do
-		hash = bit32.bxor(hash, string.byte(content, index))
-		hash = (hash * 16777619) % 4294967296
+	for ByteIndex = 1, #FileContent do
+		RunningHash = bit32.bxor(RunningHash, string.byte(FileContent, ByteIndex))
+		RunningHash = (RunningHash * 16777619) % 4294967296
 	end
 
-	return string.format("%08x", hash)
+	return string.format("%08x", RunningHash)
 end
 
 local function LoadSyncState()
-	EnsureFolder(RootFolder)
-	EnsureFolder(RootFolder .. "/Client")
+	EnsureFolderExists(WorkspaceRootFolder)
+	EnsureFolderExists(WorkspaceRootFolder .. "/Client")
 
-	if isfile(SyncStatePath) then
-		local success, decoded = pcall(function()
-			return HttpService:JSONDecode(readfile(SyncStatePath))
+	if isfile(SyncStateFilePath) then
+		local LoadedSuccessfully, DecodedSyncState = pcall(function()
+			return HttpService:JSONDecode(readfile(SyncStateFilePath))
 		end)
 
-		if success and type(decoded) == "table" then
-			SyncState = decoded
+		if LoadedSuccessfully and type(DecodedSyncState) == "table" then
+			SyncState = DecodedSyncState
 		end
 	end
 
@@ -110,365 +111,366 @@ local function LoadSyncState()
 end
 
 local function SaveSyncState()
-	EnsureFolder(RootFolder)
-	EnsureFolder(RootFolder .. "/Client")
-	writefile(SyncStatePath, HttpService:JSONEncode(SyncState))
+	EnsureFolderExists(WorkspaceRootFolder)
+	EnsureFolderExists(WorkspaceRootFolder .. "/Client")
+	writefile(SyncStateFilePath, HttpService:JSONEncode(SyncState))
 end
 
-local function GetBaseFilePath(path)
-	return BaseFolder .. "/" .. path
+local function GetBaseSnapshotFilePath(RelativeFilePath)
+	return WorkspaceBaseFolder .. "/" .. RelativeFilePath
 end
 
-local function ReadBaseContent(path)
-	local basePath = GetBaseFilePath(path)
-	if isfile(basePath) then
-		return readfile(basePath)
+local function ReadBaseSnapshotContent(RelativeFilePath)
+	local BaseSnapshotFilePath = GetBaseSnapshotFilePath(RelativeFilePath)
+	if isfile(BaseSnapshotFilePath) then
+		return readfile(BaseSnapshotFilePath)
 	end
 
 	return nil
 end
 
-local function WriteBaseContent(path, content)
-	local basePath = GetBaseFilePath(path)
-	local parentFolder = GetParentFolder(basePath)
-	if parentFolder then
-		EnsureFolder(parentFolder)
+local function WriteBaseSnapshotContent(RelativeFilePath, FileContent)
+	local BaseSnapshotFilePath = GetBaseSnapshotFilePath(RelativeFilePath)
+	local ParentFolderPath = GetParentFolderPath(BaseSnapshotFilePath)
+	if ParentFolderPath then
+		EnsureFolderExists(ParentFolderPath)
 	end
 
-	writefile(basePath, content)
+	writefile(BaseSnapshotFilePath, FileContent)
 end
 
-local function IsTextContent(content)
-	return not string.find(content, "\0", 1, true)
+local function IsTextFileContent(FileContent)
+	return not string.find(FileContent, "\0", 1, true)
 end
 
-local function SplitLines(content)
-	local newline = string.find(content, "\r\n", 1, true) and "\r\n" or "\n"
-	local normalized = string.gsub(content, "\r\n", "\n")
-	local hasTrailingNewline = normalized:sub(-1) == "\n"
+local function SplitContentIntoLines(FileContent)
+	local NewLineSequence = string.find(FileContent, "\r\n", 1, true) and "\r\n" or "\n"
+	local NormalizedContent = string.gsub(FileContent, "\r\n", "\n")
+	local HasTrailingNewLine = NormalizedContent:sub(-1) == "\n"
 
-	if hasTrailingNewline then
-		normalized = normalized:sub(1, -2)
+	if HasTrailingNewLine then
+		NormalizedContent = NormalizedContent:sub(1, -2)
 	end
 
-	local lines = {}
-	if normalized ~= "" then
-		for line in string.gmatch(normalized .. "\n", "(.-)\n") do
-			table.insert(lines, line)
+	local LineList = {}
+	if NormalizedContent ~= "" then
+		for LineText in string.gmatch(NormalizedContent .. "\n", "(.-)\n") do
+			table.insert(LineList, LineText)
 		end
 	end
 
-	return lines, newline, hasTrailingNewline
+	return LineList, NewLineSequence, HasTrailingNewLine
 end
 
-local function JoinLines(lines, newline, hasTrailingNewline)
-	local content = table.concat(lines, newline)
-	if hasTrailingNewline then
-		content = content .. newline
+local function JoinLinesIntoContent(LineList, NewLineSequence, HasTrailingNewLine)
+	local JoinedContent = table.concat(LineList, NewLineSequence)
+	if HasTrailingNewLine then
+		JoinedContent = JoinedContent .. NewLineSequence
 	end
 
-	return content
+	return JoinedContent
 end
 
-local function BuildLCSMatches(baseLines, otherLines)
-	local baseCount = #baseLines
-	local otherCount = #otherLines
-	local cellCount = (baseCount + 1) * (otherCount + 1)
+local function BuildLCSMatches(BaseLineList, OtherLineList)
+	local BaseLineCount = #BaseLineList
+	local OtherLineCount = #OtherLineList
+	local DynamicProgrammingCellCount = (BaseLineCount + 1) * (OtherLineCount + 1)
 
-	if cellCount > 250000 then
+	if DynamicProgrammingCellCount > 250000 then
 		return nil
 	end
 
-	local dp = {}
-	for baseIndex = 0, baseCount do
-		dp[baseIndex] = {}
-		dp[baseIndex][otherCount + 1] = 0
+	local DynamicProgrammingTable = {}
+	for BaseLineIndex = 0, BaseLineCount do
+		DynamicProgrammingTable[BaseLineIndex] = {}
+		DynamicProgrammingTable[BaseLineIndex][OtherLineCount + 1] = 0
 	end
 
-	for otherIndex = 0, otherCount do
-		dp[baseCount + 1] = dp[baseCount + 1] or {}
-		dp[baseCount + 1][otherIndex] = 0
+	for OtherLineIndex = 0, OtherLineCount do
+		DynamicProgrammingTable[BaseLineCount + 1] = DynamicProgrammingTable[BaseLineCount + 1] or {}
+		DynamicProgrammingTable[BaseLineCount + 1][OtherLineIndex] = 0
 	end
 
-	for baseIndex = baseCount, 1, -1 do
-		for otherIndex = otherCount, 1, -1 do
-			if baseLines[baseIndex] == otherLines[otherIndex] then
-				dp[baseIndex][otherIndex] = (dp[baseIndex + 1][otherIndex + 1] or 0) + 1
+	for BaseLineIndex = BaseLineCount, 1, -1 do
+		for OtherLineIndex = OtherLineCount, 1, -1 do
+			if BaseLineList[BaseLineIndex] == OtherLineList[OtherLineIndex] then
+				DynamicProgrammingTable[BaseLineIndex][OtherLineIndex] = (DynamicProgrammingTable[BaseLineIndex + 1][OtherLineIndex + 1] or 0) + 1
 			else
-				local nextBase = dp[baseIndex + 1][otherIndex] or 0
-				local nextOther = dp[baseIndex][otherIndex + 1] or 0
-				dp[baseIndex][otherIndex] = math.max(nextBase, nextOther)
+				local NextBaseScore = DynamicProgrammingTable[BaseLineIndex + 1][OtherLineIndex] or 0
+				local NextOtherScore = DynamicProgrammingTable[BaseLineIndex][OtherLineIndex + 1] or 0
+				DynamicProgrammingTable[BaseLineIndex][OtherLineIndex] = math.max(NextBaseScore, NextOtherScore)
 			end
 		end
 	end
 
-	local matches = {}
-	local baseIndex = 1
-	local otherIndex = 1
+	local MatchList = {}
+	local BaseLineIndex = 1
+	local OtherLineIndex = 1
 
-	while baseIndex <= baseCount and otherIndex <= otherCount do
-		if baseLines[baseIndex] == otherLines[otherIndex] then
-			table.insert(matches, {
-				Base = baseIndex,
-				Other = otherIndex
+	while BaseLineIndex <= BaseLineCount and OtherLineIndex <= OtherLineCount do
+		if BaseLineList[BaseLineIndex] == OtherLineList[OtherLineIndex] then
+			table.insert(MatchList, {
+				Base = BaseLineIndex,
+				Other = OtherLineIndex
 			})
-			baseIndex = baseIndex + 1
-			otherIndex = otherIndex + 1
+			BaseLineIndex = BaseLineIndex + 1
+			OtherLineIndex = OtherLineIndex + 1
 		else
-			local nextBase = dp[baseIndex + 1] and dp[baseIndex + 1][otherIndex] or 0
-			local nextOther = dp[baseIndex] and dp[baseIndex][otherIndex + 1] or 0
+			local NextBaseScore = DynamicProgrammingTable[BaseLineIndex + 1] and DynamicProgrammingTable[BaseLineIndex + 1][OtherLineIndex] or 0
+			local NextOtherScore = DynamicProgrammingTable[BaseLineIndex] and DynamicProgrammingTable[BaseLineIndex][OtherLineIndex + 1] or 0
 
-			if nextBase >= nextOther then
-				baseIndex = baseIndex + 1
+			if NextBaseScore >= NextOtherScore then
+				BaseLineIndex = BaseLineIndex + 1
 			else
-				otherIndex = otherIndex + 1
+				OtherLineIndex = OtherLineIndex + 1
 			end
 		end
 	end
 
-	return matches
+	return MatchList
 end
 
-local function ExtractInsertedBlocks(baseContent, localContent)
-	local baseLines = SplitLines(baseContent)
-	local localLines = SplitLines(localContent)
-	local matches = BuildLCSMatches(baseLines, localLines)
+local function ExtractInsertedBlocks(BaseFileContent, LocalFileContent)
+	local BaseLineList = SplitContentIntoLines(BaseFileContent)
+	local LocalLineList = SplitContentIntoLines(LocalFileContent)
+	local MatchList = BuildLCSMatches(BaseLineList, LocalLineList)
 
-	if not matches then
+	if not MatchList then
 		return nil
 	end
 
-	local insertions = {}
-	local previousBase = 0
-	local previousLocal = 0
+	local InsertedBlocksByBaseIndex = {}
+	local PreviousBaseLineIndex = 0
+	local PreviousLocalLineIndex = 0
 
-	for _, match in ipairs(matches) do
-		local baseGap = match.Base - previousBase - 1
-		local localGap = match.Other - previousLocal - 1
+	for _, MatchData in ipairs(MatchList) do
+		local BaseGapSize = MatchData.Base - PreviousBaseLineIndex - 1
+		local LocalGapSize = MatchData.Other - PreviousLocalLineIndex - 1
 
-		if localGap > 0 and baseGap == 0 then
-			insertions[previousBase] = insertions[previousBase] or {}
-			for localIndex = previousLocal + 1, match.Other - 1 do
-				table.insert(insertions[previousBase], localLines[localIndex])
+		if LocalGapSize > 0 and BaseGapSize == 0 then
+			InsertedBlocksByBaseIndex[PreviousBaseLineIndex] = InsertedBlocksByBaseIndex[PreviousBaseLineIndex] or {}
+			for LocalLineIndex = PreviousLocalLineIndex + 1, MatchData.Other - 1 do
+				table.insert(InsertedBlocksByBaseIndex[PreviousBaseLineIndex], LocalLineList[LocalLineIndex])
 			end
 		end
 
-		previousBase = match.Base
-		previousLocal = match.Other
+		PreviousBaseLineIndex = MatchData.Base
+		PreviousLocalLineIndex = MatchData.Other
 	end
 
-	local remainingBaseGap = #baseLines - previousBase
-	local remainingLocalGap = #localLines - previousLocal
-	if remainingLocalGap > 0 and remainingBaseGap == 0 then
-		insertions[previousBase] = insertions[previousBase] or {}
-		for localIndex = previousLocal + 1, #localLines do
-			table.insert(insertions[previousBase], localLines[localIndex])
+	local RemainingBaseGapSize = #BaseLineList - PreviousBaseLineIndex
+	local RemainingLocalGapSize = #LocalLineList - PreviousLocalLineIndex
+	if RemainingLocalGapSize > 0 and RemainingBaseGapSize == 0 then
+		InsertedBlocksByBaseIndex[PreviousBaseLineIndex] = InsertedBlocksByBaseIndex[PreviousBaseLineIndex] or {}
+		for LocalLineIndex = PreviousLocalLineIndex + 1, #LocalLineList do
+			table.insert(InsertedBlocksByBaseIndex[PreviousBaseLineIndex], LocalLineList[LocalLineIndex])
 		end
 	end
 
-	return insertions
+	return InsertedBlocksByBaseIndex
 end
 
-local function MergeLocalAdditions(baseContent, localContent, remoteContent)
-	if not IsTextContent(baseContent) or not IsTextContent(localContent) or not IsTextContent(remoteContent) then
+local function MergeLocalAdditions(BaseFileContent, LocalFileContent, RemoteFileContent)
+	if not IsTextFileContent(BaseFileContent) or not IsTextFileContent(LocalFileContent) or not IsTextFileContent(RemoteFileContent) then
 		return nil
 	end
 
-	local insertions = ExtractInsertedBlocks(baseContent, localContent)
-	if not insertions then
+	local InsertedBlocksByBaseIndex = ExtractInsertedBlocks(BaseFileContent, LocalFileContent)
+	if not InsertedBlocksByBaseIndex then
 		return nil
 	end
 
-	local baseLines = SplitLines(baseContent)
-	local remoteLines, remoteNewline, remoteTrailingNewline = SplitLines(remoteContent)
-	local remoteMatches = BuildLCSMatches(baseLines, remoteLines)
-	if not remoteMatches then
+	local BaseLineList = SplitContentIntoLines(BaseFileContent)
+	local RemoteLineList, RemoteNewLineSequence, RemoteHasTrailingNewLine = SplitContentIntoLines(RemoteFileContent)
+	local RemoteMatchList = BuildLCSMatches(BaseLineList, RemoteLineList)
+	if not RemoteMatchList then
 		return nil
 	end
 
-	local remoteByBase = {}
-	local baseByRemote = {}
-	for _, match in ipairs(remoteMatches) do
-		remoteByBase[match.Base] = match.Other
-		baseByRemote[match.Other] = match.Base
+	local RemoteIndexByBaseIndex = {}
+	local BaseIndexByRemoteIndex = {}
+	for _, MatchData in ipairs(RemoteMatchList) do
+		RemoteIndexByBaseIndex[MatchData.Base] = MatchData.Other
+		BaseIndexByRemoteIndex[MatchData.Other] = MatchData.Base
 	end
 
-	local mergedLines = {}
+	local MergedLineList = {}
 
-	local function appendInsertionsFor(baseIndex)
-		local pending = insertions[baseIndex]
-		if pending then
-			for _, line in ipairs(pending) do
-				table.insert(mergedLines, line)
+	local function AppendInsertedLinesForBaseIndex(BaseLineIndex)
+		local PendingInsertedLines = InsertedBlocksByBaseIndex[BaseLineIndex]
+		if PendingInsertedLines then
+			for _, PendingLine in ipairs(PendingInsertedLines) do
+				table.insert(MergedLineList, PendingLine)
 			end
 		end
 	end
 
-	appendInsertionsFor(0)
+	AppendInsertedLinesForBaseIndex(0)
 
-	for remoteIndex, line in ipairs(remoteLines) do
-		local matchedBaseIndex = baseByRemote[remoteIndex]
+	for RemoteLineIndex, RemoteLineText in ipairs(RemoteLineList) do
+		local MatchedBaseLineIndex = BaseIndexByRemoteIndex[RemoteLineIndex]
 
-		table.insert(mergedLines, line)
+		table.insert(MergedLineList, RemoteLineText)
 
-		if matchedBaseIndex then
-			appendInsertionsFor(matchedBaseIndex)
+		if MatchedBaseLineIndex then
+			AppendInsertedLinesForBaseIndex(MatchedBaseLineIndex)
 		end
 	end
 
-	if not remoteByBase[#baseLines] then
-		appendInsertionsFor(#baseLines)
+	if not RemoteIndexByBaseIndex[#BaseLineList] then
+		AppendInsertedLinesForBaseIndex(#BaseLineList)
 	end
 
-	return JoinLines(mergedLines, remoteNewline, remoteTrailingNewline)
+	return JoinLinesIntoContent(MergedLineList, RemoteNewLineSequence, RemoteHasTrailingNewLine)
 end
 
-local function DownloadFile(path, forceUpdate, report)
-	local url = RawGitUrl .. path
-	local savePath = RootFolder .. "/" .. path
-	local fileExists = isfile(savePath)
-	local parentFolder = GetParentFolder(savePath)
+local function DownloadRepositoryFile(RelativeFilePath, ShouldForceUpdate, SyncReport)
+	local RemoteFileUrl = RawRepositoryUrl .. RelativeFilePath
+	local LocalWorkspaceFilePath = WorkspaceRootFolder .. "/" .. RelativeFilePath
+	local LocalFileAlreadyExists = isfile(LocalWorkspaceFilePath)
+	local ParentFolderPath = GetParentFolderPath(LocalWorkspaceFilePath)
 
-	if parentFolder then
-		EnsureFolder(parentFolder, report)
+	if ParentFolderPath then
+		EnsureFolderExists(ParentFolderPath, SyncReport)
 	end
 
-	local response = HttpRequest(url)
+	local HttpResponse = SendHttpRequest(RemoteFileUrl)
 
-	if response.StatusCode == 200 then
-		local remoteHash = ComputeHash(response.Body)
-		local shouldWrite = true
-		local preservedLocalFile = false
-		local mergedLocalFile = false
+	if HttpResponse.StatusCode == 200 then
+		local RemoteFileContent = HttpResponse.Body
+		local RemoteFileHash = ComputeContentHash(RemoteFileContent)
+		local ShouldWriteRemoteFile = true
+		local PreservedLocalFile = false
+		local MergedLocalFile = false
 
-		if fileExists then
-			local oldContent = readfile(savePath)
-			local localHash = ComputeHash(oldContent)
-			local syncedHash = SyncState.FileHashes[path]
-			local baseContent = ReadBaseContent(path)
+		if LocalFileAlreadyExists then
+			local LocalFileContent = readfile(LocalWorkspaceFilePath)
+			local LocalFileHash = ComputeContentHash(LocalFileContent)
+			local LastSyncedRemoteHash = SyncState.FileHashes[RelativeFilePath]
+			local BaseSnapshotContent = ReadBaseSnapshotContent(RelativeFilePath)
 
-			if localHash == remoteHash then
-				shouldWrite = false
-				SyncState.FileHashes[path] = remoteHash
-				WriteBaseContent(path, response.Body)
-			elseif not forceUpdate and baseContent and oldContent ~= baseContent then
-				local mergedContent = MergeLocalAdditions(baseContent, oldContent, response.Body)
-				if mergedContent and mergedContent ~= oldContent then
-					writefile(savePath, mergedContent)
-					WriteBaseContent(path, response.Body)
-					SyncState.FileHashes[path] = remoteHash
-					shouldWrite = false
-					mergedLocalFile = true
-					if report then
-						table.insert(report.MergedFiles, savePath)
+			if LocalFileHash == RemoteFileHash then
+				ShouldWriteRemoteFile = false
+				SyncState.FileHashes[RelativeFilePath] = RemoteFileHash
+				WriteBaseSnapshotContent(RelativeFilePath, RemoteFileContent)
+			elseif not ShouldForceUpdate and BaseSnapshotContent and LocalFileContent ~= BaseSnapshotContent then
+				local MergedFileContent = MergeLocalAdditions(BaseSnapshotContent, LocalFileContent, RemoteFileContent)
+				if MergedFileContent and MergedFileContent ~= LocalFileContent then
+					writefile(LocalWorkspaceFilePath, MergedFileContent)
+					WriteBaseSnapshotContent(RelativeFilePath, RemoteFileContent)
+					SyncState.FileHashes[RelativeFilePath] = RemoteFileHash
+					ShouldWriteRemoteFile = false
+					MergedLocalFile = true
+					if SyncReport then
+						table.insert(SyncReport.MergedFiles, LocalWorkspaceFilePath)
 					end
 				else
-					shouldWrite = false
-					preservedLocalFile = true
-					if report then
-						table.insert(report.PreservedFiles, savePath)
+					ShouldWriteRemoteFile = false
+					PreservedLocalFile = true
+					if SyncReport then
+						table.insert(SyncReport.PreservedFiles, LocalWorkspaceFilePath)
 					end
 				end
-			elseif not forceUpdate then
-				if syncedHash and localHash ~= syncedHash then
-					shouldWrite = false
-					preservedLocalFile = true
-					if report then
-						table.insert(report.PreservedFiles, savePath)
+			elseif not ShouldForceUpdate then
+				if LastSyncedRemoteHash and LocalFileHash ~= LastSyncedRemoteHash then
+					ShouldWriteRemoteFile = false
+					PreservedLocalFile = true
+					if SyncReport then
+						table.insert(SyncReport.PreservedFiles, LocalWorkspaceFilePath)
 					end
-				elseif not syncedHash then
-					shouldWrite = false
-					preservedLocalFile = true
-					if report then
-						table.insert(report.PreservedFiles, savePath)
+				elseif not LastSyncedRemoteHash then
+					ShouldWriteRemoteFile = false
+					PreservedLocalFile = true
+					if SyncReport then
+						table.insert(SyncReport.PreservedFiles, LocalWorkspaceFilePath)
 					end
 				end
 			end
 		end
 
-		if shouldWrite then
-			writefile(savePath, response.Body)
-			WriteBaseContent(path, response.Body)
-			SyncState.FileHashes[path] = remoteHash
-			if report then
-				if fileExists then
-					table.insert(report.UpdatedFiles, savePath)
+		if ShouldWriteRemoteFile then
+			writefile(LocalWorkspaceFilePath, RemoteFileContent)
+			WriteBaseSnapshotContent(RelativeFilePath, RemoteFileContent)
+			SyncState.FileHashes[RelativeFilePath] = RemoteFileHash
+			if SyncReport then
+				if LocalFileAlreadyExists then
+					table.insert(SyncReport.UpdatedFiles, LocalWorkspaceFilePath)
 				else
-					table.insert(report.CreatedFiles, savePath)
+					table.insert(SyncReport.CreatedFiles, LocalWorkspaceFilePath)
 				end
 			end
-		elseif fileExists and isfile(savePath) and not preservedLocalFile and not mergedLocalFile then
-			SyncState.FileHashes[path] = ComputeHash(readfile(savePath))
+		elseif LocalFileAlreadyExists and isfile(LocalWorkspaceFilePath) and not PreservedLocalFile and not MergedLocalFile then
+			SyncState.FileHashes[RelativeFilePath] = ComputeContentHash(readfile(LocalWorkspaceFilePath))
 		end
 
 		return true
 	end
 
-	warn("Failed to download: " .. url)
-	if report then
-		table.insert(report.FailedFiles, savePath)
+	warn("Failed to download: " .. RemoteFileUrl)
+	if SyncReport then
+		table.insert(SyncReport.FailedFiles, LocalWorkspaceFilePath)
 	end
 	return false
 end
 
-local function GetAllFilesRecursive(folder, collectedFiles)
-	collectedFiles = collectedFiles or {}
+local function CollectRepositoryFilesRecursively(RepositoryFolderPath, CollectedFilePaths)
+	CollectedFilePaths = CollectedFilePaths or {}
 
-	local apiUrl = RepoApiUrl .. folder
-	local response = HttpRequest(apiUrl)
+	local ContentsApiUrl = RepositoryContentsApiUrl .. RepositoryFolderPath
+	local HttpResponse = SendHttpRequest(ContentsApiUrl)
 
-	if response.StatusCode ~= 200 then
-		warn("Failed to get directory listing for: " .. folder)
-		return collectedFiles
+	if HttpResponse.StatusCode ~= 200 then
+		warn("Failed to get directory listing for: " .. RepositoryFolderPath)
+		return CollectedFilePaths
 	end
 
-	local data = HttpService:JSONDecode(response.Body)
+	local DecodedItems = HttpService:JSONDecode(HttpResponse.Body)
 
-	for _, item in ipairs(data) do
-		if item.type == "file" then
-			table.insert(collectedFiles, item.path or (folder .. "/" .. item.name))
-		elseif item.type == "dir" then
-			GetAllFilesRecursive(item.path or (folder .. "/" .. item.name), collectedFiles)
+	for _, RepositoryItem in ipairs(DecodedItems) do
+		if RepositoryItem.type == "File" then
+			table.insert(CollectedFilePaths, RepositoryItem.Path or (RepositoryFolderPath .. "/" .. RepositoryItem.name))
+		elseif RepositoryItem.type == "dir" then
+			CollectRepositoryFilesRecursively(RepositoryItem.Path or (RepositoryFolderPath .. "/" .. RepositoryItem.name), CollectedFilePaths)
 		end
 	end
 
-	return collectedFiles
+	return CollectedFilePaths
 end
 
-local function SyncTaskiumFiles(forceUpdate)
-	local report = CreateSyncReport()
-	local queuedFiles = {}
+local function SyncTaskiumFiles(ShouldForceUpdate)
+	local SyncReport = CreateEmptySyncReport()
+	local QueuedFileLookup = {}
 
-	for _, folder in ipairs(Folders) do
-		EnsureFolder(folder, report)
+	for _, RequiredFolderPath in ipairs(RequiredFolderPaths) do
+		EnsureFolderExists(RequiredFolderPath, SyncReport)
 	end
 
-	local files = GetAllFilesRecursive("")
-	if #files == 0 then
-		warn("No files found in repository.")
+	local RepositoryFilePaths = CollectRepositoryFilesRecursively("")
+	if #RepositoryFilePaths == 0 then
+		warn("No Files found in repository.")
 	end
 
-	for _, file in ipairs(files) do
-		queuedFiles[file] = true
+	for _, RelativeFilePath in ipairs(RepositoryFilePaths) do
+		QueuedFileLookup[RelativeFilePath] = true
 	end
 
-	for file in pairs(queuedFiles) do
-		DownloadFile(file, forceUpdate, report)
+	for RelativeFilePath in pairs(QueuedFileLookup) do
+		DownloadRepositoryFile(RelativeFilePath, ShouldForceUpdate, SyncReport)
 	end
 
 	SaveSyncState()
 
-	Taskium.LastSyncReport = report
-	return report
+	Taskium.LastSyncReport = SyncReport
+	return SyncReport
 end
 
-local function EnsureBootstrapFiles(report)
-	for _, file in ipairs(BootstrapFiles) do
-		local savePath = RootFolder .. "/" .. file
-		if not isfile(savePath) then
-			local success = DownloadFile(file, true, report)
-			if not success then
-				warn("Failed to bootstrap file: " .. file)
+local function EnsureBootstrapFilesExist(SyncReport)
+	for _, BootstrapRelativePath in ipairs(BootstrapFilePaths) do
+		local BootstrapWorkspacePath = WorkspaceRootFolder .. "/" .. BootstrapRelativePath
+		if not isfile(BootstrapWorkspacePath) then
+			local DownloadedSuccessfully = DownloadRepositoryFile(BootstrapRelativePath, true, SyncReport)
+			if not DownloadedSuccessfully then
+				warn("Failed to bootstrap File: " .. BootstrapRelativePath)
 			end
 		end
 	end
@@ -476,24 +478,24 @@ local function EnsureBootstrapFiles(report)
 	SaveSyncState()
 end
 
-local function ExecuteFile(path)
-	local success, content = pcall(readfile, path)
-	if not success then
-		warn("Failed to read file: " .. path)
+local function ExecuteWorkspaceFile(WorkspaceFilePath)
+	local ReadSucceeded, FileContent = pcall(readfile, WorkspaceFilePath)
+	if not ReadSucceeded then
+		warn("Failed to read File: " .. WorkspaceFilePath)
 		return nil
 	end
 
-	local fn, err = loadstring(content, "@" .. path)
-	if not fn then
-		warn("Failed to load " .. path .. ": " .. tostring(err))
+	local LoadedFunction, LoadError = loadstring(FileContent, "@" .. WorkspaceFilePath)
+	if not LoadedFunction then
+		warn("Failed to load " .. WorkspaceFilePath .. ": " .. tostring(LoadError))
 		return nil
 	end
 
-	return fn()
+	return LoadedFunction()
 end
 
 local function BootTaskium()
-	EnsureBootstrapFiles(Taskium.LastSyncReport or CreateSyncReport())
+	EnsureBootstrapFilesExist(Taskium.LastSyncReport or CreateEmptySyncReport())
 
 	if Taskium.API and type(Taskium.API.Shutdown) == "function" then
 		pcall(function()
@@ -501,10 +503,10 @@ local function BootTaskium()
 		end)
 	end
 
-	local config = ExecuteFile("Taskium/Client/Config.lua")
-	Taskium.Config = config
+	local TaskiumConfig = ExecuteWorkspaceFile("Taskium/Client/Config.lua")
+	Taskium.Config = TaskiumConfig
 
-	local TaskAPI = ExecuteFile("Taskium/GUI/TaskUI.lua")
+	local TaskAPI = ExecuteWorkspaceFile("Taskium/GUI/TaskUI.lua")
 	if not TaskAPI then
 		warn("Taskium bootstrap could not find Taskium/GUI/TaskUI.lua")
 		return nil
@@ -512,10 +514,10 @@ local function BootTaskium()
 
 	getgenv().TaskAPI = TaskAPI
 	Taskium.API = TaskAPI
-	TaskAPI.Config = config
+	TaskAPI.Config = TaskiumConfig
 
-	ExecuteFile("Taskium/GUI/Categories.lua")
-	ExecuteFile("Taskium/Games/Universal.lua")
+	ExecuteWorkspaceFile("Taskium/GUI/Categories.lua")
+	ExecuteWorkspaceFile("Taskium/Games/Universal.lua")
 
 	return TaskAPI
 end
@@ -525,29 +527,29 @@ local function RestartTaskium()
 end
 
 Taskium.SyncTaskiumFiles = SyncTaskiumFiles
-Taskium.ExecuteFile = ExecuteFile
+Taskium.ExecuteFile = ExecuteWorkspaceFile
 Taskium.RestartTaskium = RestartTaskium
 Taskium.LastSyncReport = nil
 
 LoadSyncState()
 
 local InitialSyncReport = SyncTaskiumFiles(false)
-EnsureBootstrapFiles(InitialSyncReport)
+EnsureBootstrapFilesExist(InitialSyncReport)
 Taskium.LastSyncReport = InitialSyncReport
 
 local TaskAPI = BootTaskium()
 
 if TaskAPI then
-	local createdFolderCount = #InitialSyncReport.CreatedFolders
-	local createdFileCount = #InitialSyncReport.CreatedFiles
-	local updatedFileCount = #InitialSyncReport.UpdatedFiles
+	local CreatedFolderCount = #InitialSyncReport.CreatedFolders
+	local CreatedFileCount = #InitialSyncReport.CreatedFiles
+	local UpdatedFileCount = #InitialSyncReport.UpdatedFiles
 
-	if createdFolderCount > 0 then
-		TaskAPI.Notification("Taskium", ("Created %d folder(s)."):format(createdFolderCount), 3, "Info")
+	if CreatedFolderCount > 0 then
+		TaskAPI.Notification("Taskium", ("Created %d Folder(s)."):format(CreatedFolderCount), 3, "Info")
 	end
 
-	if createdFileCount > 0 or updatedFileCount > 0 then
-		TaskAPI.Notification("Taskium", ("Files synced: %d new, %d updated."):format(createdFileCount, updatedFileCount), 3, "Success")
+	if CreatedFileCount > 0 or UpdatedFileCount > 0 then
+		TaskAPI.Notification("Taskium", ("Files synced: %d new, %d updated."):format(CreatedFileCount, UpdatedFileCount), 3, "Success")
 	end
 
 	if Taskium and Taskium.API then

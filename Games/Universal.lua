@@ -5,8 +5,9 @@ local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer and LocalPlayer:WaitForChild("PlayerGui")
 
-if not TaskAPI or not TaskAPI.Categories or not TaskAPI.Categories.Combat or not TaskAPI.Categories.Render then
-	error("Required categories were not loaded before Games/Universal.lua")
+if not TaskAPI or not TaskAPI.Categories then
+	TaskAPI.Notification("Taskium", "TaskAPI categories were not loaded before Games/Universal.lua", 5, "Error")
+	return TaskAPI
 end
 
 local TestModule
@@ -15,26 +16,26 @@ local PrintSpeed = 20
 local MoveMode = "Direct"
 TestModule = TaskAPI.Categories.Combat:CreateModule({
 	Name = "TestModule",
-	Function = function(enabled, runId, module)
-		print(enabled, "module state")
+	Function = function(Enabled, RunId, Module)
+		print(Enabled, "module state")
 
-		if enabled then
+		if Enabled then
 			TestModule:Clean(Instance.new("Part"))
 
 			repeat
 				print("repeat loop!")
 				task.wait(math.max(0.05, (41 - PrintSpeed) * 0.05))
-			until (not module:IsActive(runId))
+			until (not Module:IsActive(RunId))
 		end
 	end,
-	Tooltip = "This is a test module.",
+	ToolTip = "This is a test module.",
 	Toggles = {
 		{
 			Name = "Toggle",
-			Function = function(callback)
-				print(callback, "toggle enabled!")
+			Function = function(Callback)
+				print(Callback, "toggle enabled!")
 			end,
-			Tooltip = "This is a test toggle."
+			ToolTip = "This is a test toggle."
 		}
 	},
 	Sliders = {
@@ -46,76 +47,77 @@ TestModule = TaskAPI.Categories.Combat:CreateModule({
 			Function = function(value)
 				PrintSpeed = value
 			end,
-			Tooltip = "Adjusts the speed of the print."
+			ToolTip = "Adjusts the speed of the print."
 		}
 	},
 	Dropdowns = {
 		{
 			Name = "Move Mode",
 			List = { "Direct", "InDirect" },
-			Function = function(val)
-				MoveMode = val
-				print(val, "dropdown value changed")
+			Function = function(Value)
+				MoveMode = Value
+				print(Value, "dropdown value changed")
 			end,
-			Tooltip = "This is a test dropdown."
+			ToolTip = "This is a test dropdown."
 		}
 	}
 })
 
+local ArraylistModule
 ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 	Name = "Arraylist",
-	Function = function(enabled, runId, module)
-		if not enabled then
+	Function = function(Enabled, RunId, Module)
+		if not Enabled then
 			return
 		end
 
-		local arraylistGui = Instance.new("ScreenGui")
-		arraylistGui.Name = "TaskiumArraylist"
-		arraylistGui.ResetOnSpawn = false
-		arraylistGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		arraylistGui.Parent = PlayerGui
-		module:Clean(arraylistGui)
+		local ArraylistGui = Instance.new("ScreenGui")
+		ArraylistGui.Name = "TaskiumArraylist"
+		ArraylistGui.ResetOnSpawn = false
+		ArraylistGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		ArraylistGui.Parent = PlayerGui
+		Module:Clean(ArraylistGui)
 
-		local rootFrame = Instance.new("Frame")
-		rootFrame.Name = "Root"
-		rootFrame.AnchorPoint = Vector2.new(1, 0)
-		rootFrame.Position = UDim2.new(1, -12, 0, 12)
-		rootFrame.Size = UDim2.new(0, 0, 0, 0)
-		rootFrame.BackgroundTransparency = 1
-		rootFrame.BorderSizePixel = 0
-		rootFrame.Parent = arraylistGui
+		local RootFrame = Instance.new("Frame")
+		RootFrame.Name = "Root"
+		RootFrame.AnchorPoint = Vector2.new(1, 0)
+		RootFrame.Position = UDim2.new(1, -12, 0, 12)
+		RootFrame.Size = UDim2.new(0, 0, 0, 0)
+		RootFrame.BackgroundTransparency = 1
+		RootFrame.BorderSizePixel = 0
+		RootFrame.Parent = ArraylistGui
 
-		local backgroundFrame = Instance.new("Frame")
-		backgroundFrame.Name = "Background"
-		backgroundFrame.Size = UDim2.new(0, 0, 0, 0)
-		backgroundFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		backgroundFrame.BackgroundTransparency = 1
-		backgroundFrame.BorderSizePixel = 0
-		backgroundFrame.Parent = rootFrame
+		local BackgroundFrame = Instance.new("Frame")
+		BackgroundFrame.Name = "Background"
+		BackgroundFrame.Size = UDim2.new(0, 0, 0, 0)
+		BackgroundFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		BackgroundFrame.BackgroundTransparency = 1
+		BackgroundFrame.BorderSizePixel = 0
+		BackgroundFrame.Parent = RootFrame
 
-		local entriesHolder = Instance.new("Frame")
-		entriesHolder.Name = "EntriesHolder"
-		entriesHolder.Size = UDim2.new(0, 0, 0, 0)
-		entriesHolder.BackgroundTransparency = 1
-		entriesHolder.BorderSizePixel = 0
-		entriesHolder.Parent = rootFrame
+		local EntriesHolder = Instance.new("Frame")
+		EntriesHolder.Name = "EntriesHolder"
+		EntriesHolder.Size = UDim2.new(0, 0, 0, 0)
+		EntriesHolder.BackgroundTransparency = 1
+		EntriesHolder.BorderSizePixel = 0
+		EntriesHolder.Parent = RootFrame
 
-		local listLayout = Instance.new("UIListLayout")
-		listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		listLayout.Padding = UDim.new(0, 0)
-		listLayout.Parent = entriesHolder
+		local ListLayout = Instance.new("UIListLayout")
+		ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		ListLayout.Padding = UDim.new(0, 0)
+		ListLayout.Parent = EntriesHolder
 
-		local sideLine = Instance.new("Frame")
-		sideLine.Name = "SideLine"
-		sideLine.AnchorPoint = Vector2.new(1, 0)
-		sideLine.Position = UDim2.new(1, 0, 0, 0)
-		sideLine.Size = UDim2.new(0, 3, 0, 0)
-		sideLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		sideLine.BorderSizePixel = 0
-		sideLine.Parent = rootFrame
+		local SideLine = Instance.new("Frame")
+		SideLine.Name = "SideLine"
+		SideLine.AnchorPoint = Vector2.new(1, 0)
+		SideLine.Position = UDim2.new(1, 0, 0, 0)
+		SideLine.Size = UDim2.new(0, 3, 0, 0)
+		SideLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		SideLine.BorderSizePixel = 0
+		SideLine.Parent = RootFrame
 
-		local function createMovingGradient(gradient)
-			gradient.Color = ColorSequence.new({
+		local function CreateMovingGradient(Gradient)
+			Gradient.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0.00, Color3.fromRGB(0, 0, 0)),
 				ColorSequenceKeypoint.new(0.35, Color3.fromRGB(0, 0, 0)),
 				ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 255, 255)),
@@ -124,129 +126,129 @@ ArraylistModule = TaskAPI.Categories.Render:CreateModule({
 			})
 		end
 
-		local sideLineGradient = Instance.new("UIGradient")
-		createMovingGradient(sideLineGradient)
-		sideLineGradient.Rotation = 90
-		sideLineGradient.Parent = sideLine
+		local SideLineGradient = Instance.new("UIGradient")
+		CreateMovingGradient(SideLineGradient)
+		SideLineGradient.Rotation = 90
+		SideLineGradient.Parent = SideLine
 
-		local animatedGradients = {}
+		local AnimatedGradients = {}
 
-		local function applyBlackToWhiteGradient(guiObject, rotation)
-			local gradient = Instance.new("UIGradient")
-			createMovingGradient(gradient)
-			gradient.Rotation = rotation or 0
-			gradient.Parent = guiObject
-			table.insert(animatedGradients, gradient)
-			return gradient
+		local function ApplyBlackToWhiteGradient(GuiObject, Rotation)
+			local Gradient = Instance.new("UIGradient")
+			CreateMovingGradient(Gradient)
+			Gradient.Rotation = Rotation or 0
+			Gradient.Parent = GuiObject
+			table.insert(AnimatedGradients, Gradient)
+			return Gradient
 		end
 
-		local function getEnabledModules()
-			local enabledModules = {}
+		local function GetEnabledModules()
+			local EnabledModules = {}
 
-			for _, listedModule in pairs(TaskAPI.Modules) do
-				if listedModule.Enabled then
-					table.insert(enabledModules, listedModule)
+			for _, ListedModule in pairs(TaskAPI.Modules) do
+				if ListedModule.Enabled then
+					table.insert(EnabledModules, ListedModule)
 				end
 			end
 
-			table.sort(enabledModules, function(left, right)
-				local leftLength = #left.Name
-				local rightLength = #right.Name
+			table.sort(EnabledModules, function(Left, Right)
+				local LeftLength = #Left.Name
+				local RightLength = #Right.Name
 
-				if leftLength == rightLength then
-					return left.Name > right.Name
+				if LeftLength == RightLength then
+					return Left.Name > Right.Name
 				end
 
-				return leftLength > rightLength
+				return LeftLength > RightLength
 			end)
 
-			return enabledModules
+			return EnabledModules
 		end
 
-		local function clearEntries()
-			for _, child in ipairs(entriesHolder:GetChildren()) do
-				if not child:IsA("UIListLayout") then
-					child:Destroy()
+		local function ClearEntries()
+			for _, Child in ipairs(EntriesHolder:GetChildren()) do
+				if not Child:IsA("UIListLayout") then
+					Child:Destroy()
 				end
 			end
 		end
 
-		local function renderArraylist()
-			clearEntries()
-			animatedGradients = {}
+		local function RenderArraylist()
+			ClearEntries()
+			AnimatedGradients = {}
 
-			local enabledModules = getEnabledModules()
-			local maxWidth = 0
-			local rowHeight = 28
-			local textSize = 18
-			local backgroundPadding = 24
+			local EnabledModules = GetEnabledModules()
+			local MaxWidth = 0
+			local RowHeight = 28
+			local TextSize = 18
+			local BackgroundPadding = 24
 
-			for _, listedModule in ipairs(enabledModules) do
-				local textBounds = TextService:GetTextSize(listedModule.Name, textSize, Enum.Font.GothamBold, Vector2.new(1000, rowHeight))
-				maxWidth = math.max(maxWidth, textBounds.X + backgroundPadding + 10)
+			for _, ListedModule in ipairs(EnabledModules) do
+				local TextBounds = TextService:GetTextSize(ListedModule.Name, TextSize, Enum.Font.GothamBold, Vector2.new(1000, RowHeight))
+				MaxWidth = math.max(MaxWidth, TextBounds.X + BackgroundPadding + 10)
 			end
 
-			if maxWidth < 80 then
-				maxWidth = 80
+			if MaxWidth < 80 then
+				MaxWidth = 80
 			end
 
-			for index, listedModule in ipairs(enabledModules) do
-				local textBounds = TextService:GetTextSize(listedModule.Name, textSize, Enum.Font.GothamBold, Vector2.new(1000, rowHeight))
-				local backgroundWidth = textBounds.X + backgroundPadding
+			for Index, ListedModule in ipairs(EnabledModules) do
+				local TextBounds = TextService:GetTextSize(ListedModule.Name, TextSize, Enum.Font.GothamBold, Vector2.new(1000, RowHeight))
+				local BackgroundWidth = TextBounds.X + BackgroundPadding
 
-				local row = Instance.new("Frame")
-				row.Name = listedModule.Name
-				row.Size = UDim2.new(0, maxWidth, 0, rowHeight)
-				row.BackgroundTransparency = 1
-				row.BorderSizePixel = 0
-				row.LayoutOrder = index
-				row.Parent = entriesHolder
+				local Row = Instance.new("Frame")
+				Row.Name = ListedModule.Name
+				Row.Size = UDim2.new(0, MaxWidth, 0, RowHeight)
+				Row.BackgroundTransparency = 1
+				Row.BorderSizePixel = 0
+				Row.LayoutOrder = Index
+				Row.Parent = EntriesHolder
 
-				local rowBackground = Instance.new("Frame")
-				rowBackground.Name = "RowBackground"
-				rowBackground.AnchorPoint = Vector2.new(1, 0)
-				rowBackground.Position = UDim2.new(1, -3, 0, 0)
-				rowBackground.Size = UDim2.new(0, backgroundWidth, 1, 0)
-				rowBackground.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-				rowBackground.BackgroundTransparency = 0.58
-				rowBackground.BorderSizePixel = 0
-				rowBackground.Parent = row
+				local RowBackground = Instance.new("Frame")
+				RowBackground.Name = "RowBackground"
+				RowBackground.AnchorPoint = Vector2.new(1, 0)
+				RowBackground.Position = UDim2.new(1, -3, 0, 0)
+				RowBackground.Size = UDim2.new(0, BackgroundWidth, 1, 0)
+				RowBackground.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+				RowBackground.BackgroundTransparency = 0.58
+				RowBackground.BorderSizePixel = 0
+				RowBackground.Parent = Row
 
-				local nameLabel = Instance.new("TextLabel")
-				nameLabel.Name = "ModuleName"
-				nameLabel.Size = UDim2.new(0, backgroundWidth - 12, 1, 0)
-				nameLabel.AnchorPoint = Vector2.new(1, 0)
-				nameLabel.Position = UDim2.new(1, -9, 0, 0)
-				nameLabel.BackgroundTransparency = 1
-				nameLabel.Text = listedModule.Name
-				nameLabel.TextSize = textSize
-				nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-				nameLabel.TextXAlignment = Enum.TextXAlignment.Right
-				nameLabel.TextYAlignment = Enum.TextYAlignment.Center
-				nameLabel.Font = Enum.Font.GothamBold
-				nameLabel.Parent = row
-				applyBlackToWhiteGradient(nameLabel, 0)
+				local NameLabel = Instance.new("TextLabel")
+				NameLabel.Name = "ModuleName"
+				NameLabel.Size = UDim2.new(0, BackgroundWidth - 12, 1, 0)
+				NameLabel.AnchorPoint = Vector2.new(1, 0)
+				NameLabel.Position = UDim2.new(1, -9, 0, 0)
+				NameLabel.BackgroundTransparency = 1
+				NameLabel.Text = ListedModule.Name
+				NameLabel.TextSize = TextSize
+				NameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				NameLabel.TextXAlignment = Enum.TextXAlignment.Right
+				NameLabel.TextYAlignment = Enum.TextYAlignment.Center
+				NameLabel.Font = Enum.Font.GothamBold
+				NameLabel.Parent = Row
+				ApplyBlackToWhiteGradient(NameLabel, 0)
 			end
 
-			local totalHeight = #enabledModules * rowHeight
-			rootFrame.Size = UDim2.new(0, maxWidth, 0, totalHeight)
-			entriesHolder.Size = UDim2.new(0, maxWidth, 0, totalHeight)
-			backgroundFrame.Size = UDim2.new(0, maxWidth, 0, totalHeight)
-			sideLine.Size = UDim2.new(0, 3, 0, totalHeight)
+			local TotalHeight = #EnabledModules * RowHeight
+			RootFrame.Size = UDim2.new(0, MaxWidth, 0, TotalHeight)
+			EntriesHolder.Size = UDim2.new(0, MaxWidth, 0, TotalHeight)
+			BackgroundFrame.Size = UDim2.new(0, MaxWidth, 0, TotalHeight)
+			SideLine.Size = UDim2.new(0, 3, 0, TotalHeight)
 
-			local gradientOffset = (tick() * 0.85) % 2 - 1
-			sideLineGradient.Offset = Vector2.new(gradientOffset, 0)
-			for _, gradient in ipairs(animatedGradients) do
-				gradient.Offset = Vector2.new(gradientOffset, 0)
+			local GradientOffset = (tick() * 0.85) % 2 - 1
+			SideLineGradient.Offset = Vector2.new(GradientOffset, 0)
+			for _, Gradient in ipairs(AnimatedGradients) do
+				Gradient.Offset = Vector2.new(GradientOffset, 0)
 			end
 		end
 
 		repeat
-			renderArraylist()
+			RenderArraylist()
 			task.wait(0.15)
-		until (not module:IsActive(runId))
+		until (not Module:IsActive(RunId))
 	end,
-	Tooltip = "Displays enabled modules in the top-right corner."
+	ToolTip = "Displays enabled modules in the top-right corner."
 })
 
 return TaskAPI
