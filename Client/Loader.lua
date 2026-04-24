@@ -494,6 +494,17 @@ local function ExecuteWorkspaceFile(WorkspaceFilePath)
 	return LoadedFunction()
 end
 
+local function IsLikelyBedwarsPlace()
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local TSFolder = ReplicatedStorage:FindFirstChild("TS")
+	local ItemFolder = TSFolder and TSFolder:FindFirstChild("item")
+	return ReplicatedStorage:FindFirstChild("rbxts_include") ~= nil
+		and TSFolder ~= nil
+		and TSFolder:FindFirstChild("remotes") ~= nil
+		and ItemFolder ~= nil
+		and ItemFolder:FindFirstChild("item-meta") ~= nil
+end
+
 local function GetQueueOnTeleportFunction()
 	if syn and type(syn.queue_on_teleport) == "function" then
 		return syn.queue_on_teleport
@@ -518,6 +529,30 @@ local function BuildTeleportBootstrapSource()
 	return [[
 local WorkspaceLoaderPath = "Taskium/Client/Loader.lua"
 local LoaderSource
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local function IsLikelyBedwarsPlace()
+	local TSFolder = ReplicatedStorage:FindFirstChild("TS")
+	local ItemFolder = TSFolder and TSFolder:FindFirstChild("item")
+	return ReplicatedStorage:FindFirstChild("rbxts_include") ~= nil
+		and TSFolder ~= nil
+		and TSFolder:FindFirstChild("remotes") ~= nil
+		and ItemFolder ~= nil
+		and ItemFolder:FindFirstChild("item-meta") ~= nil
+end
+
+if not IsLikelyBedwarsPlace() then
+	for _ = 1, 100 do
+		if IsLikelyBedwarsPlace() then
+			break
+		end
+		task.wait(0.1)
+	end
+
+	if not IsLikelyBedwarsPlace() then
+		return nil
+	end
+end
 
 if isfile and isfile(WorkspaceLoaderPath) then
 	local ReadSucceeded, FileContent = pcall(readfile, WorkspaceLoaderPath)
@@ -540,6 +575,10 @@ return LoaderFunction()
 end
 
 local function QueueTaskiumOnTeleport()
+	if not IsLikelyBedwarsPlace() then
+		return false
+	end
+
 	local QueueFunction = GetQueueOnTeleportFunction()
 	if not QueueFunction then
 		return false
