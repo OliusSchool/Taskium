@@ -1,7 +1,6 @@
 local Players = game:GetService("Players")
 local InputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
-local LogService = game:GetService("LogService")
 local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 
@@ -20,7 +19,7 @@ local PreviousTaskAPI = getgenv().TaskAPI
 
 local TaskAssets = {
 	CategoryFrame = "rbxassetid://126645359069961",
-	Shadow = "rbxassetid://125043055375567",
+	ShadowEffect = "rbxassetid://125043055375567",
 	NotificationFrame = "rbxassetid://123298087495168",
 	ToolTipFrame = "rbxassetid://109798445140553"
 }
@@ -39,6 +38,54 @@ getgenv().TaskAPI = TaskAPI
 
 local TaskConfig = getgenv().Taskium and getgenv().Taskium.Config
 TaskAPI.Config = TaskConfig
+local ActiveKeybindModule = nil
+
+local function IsFlyMovementKeyCode(KeyCode)
+	return KeyCode == Enum.KeyCode.Space
+		or KeyCode == Enum.KeyCode.LeftShift
+		or KeyCode == Enum.KeyCode.ButtonA
+		or KeyCode == Enum.KeyCode.ButtonL2
+end
+
+local function IsReservedKeybindName(Module, KeybindName)
+	if type(KeybindName) ~= "string" or KeybindName == "" then
+		return false
+	end
+
+	local KeyCode = Enum.KeyCode[KeybindName]
+	if KeyCode == nil then
+		return false
+	end
+
+	if KeyCode == Enum.KeyCode.RightShift then
+		return true, "RightShift is reserved for opening Taskium."
+	end
+
+	if Module and Module.Name == "Fly" and IsFlyMovementKeyCode(KeyCode) then
+		return true, "Space and LeftShift are reserved for Fly movement."
+	end
+
+	return false
+end
+
+local function IsReservedModuleKeybind(Input)
+	if Input.UserInputType ~= Enum.UserInputType.Keyboard then
+		return false
+	end
+
+	if Input.KeyCode == Enum.KeyCode.RightShift then
+		return true
+	end
+
+	local FlyModule = TaskAPI.Modules and TaskAPI.Modules.Fly
+	if FlyModule and FlyModule.Enabled then
+		if IsFlyMovementKeyCode(Input.KeyCode) then
+			return true
+		end
+	end
+
+	return false
+end
 
 local function BuildConfigKey(...)
 	local Parts = { ... }
@@ -188,7 +235,7 @@ local ToolTipFrame = Instance.new("Frame")
 ToolTipFrame.Name = "ModuleToolTip"
 ToolTipFrame.Size = UDim2.new(0, 20, 0, 20)
 ToolTipFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-ToolTipFrame.BackgroundTransparency = 0
+ToolTipFrame.BackgroundTransparency = 0.1
 ToolTipFrame.BorderSizePixel = 0
 ToolTipFrame.ClipsDescendants = true
 ToolTipFrame.Visible = false
@@ -201,14 +248,16 @@ ToolTipCorner.Parent = ToolTipFrame
 
 local ToolTipImage = Instance.new("ImageLabel")
 ToolTipImage.Name = "ToolTipImage"
-ToolTipImage.Size = UDim2.new(1, 0, 1, 0)
+ToolTipImage.Size = ToolTipFrame.Size
+ToolTipImage.Position = ToolTipFrame.Position
 ToolTipImage.BackgroundTransparency = 1
 ToolTipImage.BorderSizePixel = 0
 ToolTipImage.Image = TaskAssets.ToolTipFrame
 ToolTipImage.ImageColor3 = Color3.fromRGB(255, 255, 255)
 ToolTipImage.ScaleType = Enum.ScaleType.Stretch
 ToolTipImage.ZIndex = 49
-ToolTipImage.Parent = ToolTipFrame
+ToolTipImage.Visible = false
+ToolTipImage.Parent = ScreenGui
 
 local ToolTipText = Instance.new("TextLabel")
 ToolTipText.Name = "ToolTipText"
@@ -247,7 +296,9 @@ local function UpdateToolTipPosition(MousePosition)
 	local PositionX = math.clamp(MousePosition.X + 14, 6, ViewportSize.X - ToolTipWidth - 6)
 	local PositionY = math.clamp(MousePosition.Y + 16, 6, ViewportSize.Y - ToolTipHeight - 6)
 
-	ToolTipFrame.Position = UDim2.new(0, PositionX, 0, PositionY)
+	local ToolTipPosition = UDim2.new(0, PositionX, 0, PositionY)
+	ToolTipFrame.Position = ToolTipPosition
+	ToolTipImage.Position = ToolTipPosition
 end
 
 local function ShowToolTip(Text)
@@ -261,14 +312,17 @@ local function ShowToolTip(Text)
 	local ToolTipWidth = math.max(20, TextSize.X + 14)
 
 	ToolTipFrame.Size = UDim2.new(0, ToolTipWidth, 0, 20)
+	ToolTipImage.Size = ToolTipFrame.Size
 	ToolTipText.Text = Text
 	ToolTipFrame.Visible = true
+	ToolTipImage.Visible = true
 	UpdateToolTipPosition(InputService:GetMouseLocation())
 end
 
 local function HideToolTip()
 	ActiveToolTipText = nil
 	ToolTipFrame.Visible = false
+	ToolTipImage.Visible = false
 	ToolTipText.Text = ""
 end
 
@@ -495,26 +549,6 @@ function TaskAPI:Notify(NotificationData)
 	return TaskAPI.Notification(NotificationData)
 end
 
-local function GetConsoleNotificationType(MessageType)
-	if MessageType == Enum.MessageType.MessageError then
-		return "Error"
-	end
-
-	if MessageType == Enum.MessageType.MessageWarning then
-		return "Warning"
-	end
-end
-
-local function GetConsoleNotificationTitle(MessageType)
-	if MessageType == Enum.MessageType.MessageError then
-		return "Console Error"
-	end
-
-	if MessageType == Enum.MessageType.MessageWarning then
-		return "Console Warning"
-	end
-end
-
 local function UpdateCategorySize(Category)
 	local DefaultHeight = Category.DefaultSize.Y.Offset
 	local TotalContentHeight = 0
@@ -555,6 +589,10 @@ local function RefreshModuleDisplay(Module)
 	Module.NameLabel.Text = Module.Name
 	Module.ArrowButton.Visible = (#Module.ToggleList + #Module.SliderList + #Module.DropdownList) > 0
 	Module.ArrowButton.Text = Module.Expanded and "v" or ">"
+	if Module.KeybindButton then
+		Module.KeybindButton.TextColor3 = Module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
+		Module.KeybindButton.Text = Module.WaitingForKeybind and "..." or Module:GetKeybindDisplayText()
+	end
 end
 
 local function RefreshToggleDisplay(Toggle)
@@ -619,7 +657,7 @@ function TaskAPI:CreateCategory(CategoryData)
 	ShadowEffect.Size = UDim2.new(0, 190, 0, 105)
 	ShadowEffect.Position = UDim2.new(0, -13, 0, -11)
 	ShadowEffect.BackgroundTransparency = 1
-	ShadowEffect.Image = TaskAssets.Shadow
+	ShadowEffect.Image = TaskAssets.ShadowEffect
 	ShadowEffect.ZIndex = 1
 	ShadowEffect.Parent = ContainerFrame
 
@@ -719,7 +757,7 @@ function TaskAPI:CreateCategory(CategoryData)
 
 		local NameLabel = Instance.new("TextLabel")
 		NameLabel.Name = "ModuleName"
-		NameLabel.Size = UDim2.new(1, -34, 1, 0)
+		NameLabel.Size = UDim2.new(1, -92, 1, 0)
 		NameLabel.Position = UDim2.new(0, 8, 0, 0)
 		NameLabel.BackgroundTransparency = 1
 		NameLabel.Text = ModuleData.Name
@@ -730,6 +768,22 @@ function TaskAPI:CreateCategory(CategoryData)
 		NameLabel.Font = Enum.Font.GothamBold
 		NameLabel.ZIndex = 5
 		NameLabel.Parent = ModuleButton
+
+		local KeybindButton = Instance.new("TextButton")
+		KeybindButton.Name = "KeybindButton"
+		KeybindButton.Size = UDim2.new(0, 50, 1, 0)
+		KeybindButton.AnchorPoint = Vector2.new(1, 0)
+		KeybindButton.Position = UDim2.new(1, -28, 0, 0)
+		KeybindButton.BackgroundTransparency = 1
+		KeybindButton.AutoButtonColor = false
+		KeybindButton.Text = "None"
+		KeybindButton.TextSize = 12
+		KeybindButton.TextColor3 = Color3.fromRGB(170, 170, 170)
+		KeybindButton.TextXAlignment = Enum.TextXAlignment.Right
+		KeybindButton.TextYAlignment = Enum.TextYAlignment.Center
+		KeybindButton.Font = Enum.Font.Gotham
+		KeybindButton.ZIndex = 6
+		KeybindButton.Parent = ModuleButton
 
 		local ArrowButton = Instance.new("TextButton")
 		ArrowButton.Name = "ExpandArrow"
@@ -772,6 +826,7 @@ function TaskAPI:CreateCategory(CategoryData)
 			Container = ModuleContainer,
 			Button = ModuleButton,
 			NameLabel = NameLabel,
+			KeybindButton = KeybindButton,
 			ArrowButton = ArrowButton,
 			OptionsHolder = OptionsHolder,
 			OptionsLayout = OptionsLayout,
@@ -783,7 +838,10 @@ function TaskAPI:CreateCategory(CategoryData)
 			Dropdowns = {},
 			Category = self,
 			Cleanups = {},
-			Tweens = {}
+			Tweens = {},
+			Keybind = nil,
+			WaitingForKeybind = false,
+			LastKeybindToggleAt = 0
 		}
 
 		OptionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -883,6 +941,56 @@ function TaskAPI:CreateCategory(CategoryData)
 
 		function Module:Toggle()
 			self:SetEnabled(not self.Enabled)
+		end
+
+		function Module:GetKeybindDisplayText()
+			if not self.Keybind then
+				return "None"
+			end
+
+			return tostring(self.Keybind)
+		end
+
+		function Module:SetKeybind(KeybindName, options)
+			options = options or {}
+			local PreviousKeybind = self.Keybind
+
+			if KeybindName ~= nil then
+				KeybindName = tostring(KeybindName)
+				if Enum.KeyCode[KeybindName] == nil then
+					KeybindName = nil
+				end
+			end
+
+			if KeybindName ~= nil and not options.AllowReserved then
+				local Reserved, ReservedMessage = IsReservedKeybindName(self, KeybindName)
+				if Reserved then
+					self.WaitingForKeybind = false
+					RefreshModuleDisplay(self)
+					if not options.SkipNotify then
+						TaskAPI.Notification({
+							Title = "Taskium",
+							Message = ReservedMessage,
+							Duration = 4,
+							Type = "Warning"
+						})
+					end
+					return PreviousKeybind
+				end
+			end
+
+			self.Keybind = KeybindName
+			self.WaitingForKeybind = false
+			RefreshModuleDisplay(self)
+
+			if not options.SkipConfig then
+				SetConfigValue("Keybind", self.ConfigKey, self.Keybind)
+			end
+		end
+
+		function Module:BeginKeybindCapture()
+			self.WaitingForKeybind = true
+			RefreshModuleDisplay(self)
 		end
 
 		function Module:SetExpanded(state)
@@ -1016,6 +1124,14 @@ function TaskAPI:CreateCategory(CategoryData)
 
 			ToggleButton.MouseButton1Click:Connect(function()
 				Toggle:Toggle()
+			end)
+
+			ToggleButton.MouseEnter:Connect(function()
+				ShowToolTip(Toggle.ToolTip)
+			end)
+
+			ToggleButton.MouseLeave:Connect(function()
+				HideToolTip()
 			end)
 
 			table.insert(self.ToggleList, Toggle)
@@ -1205,6 +1321,14 @@ function TaskAPI:CreateCategory(CategoryData)
 			SliderButton.MouseButton1Down:Connect(function(mouseX)
 				DraggingSlider = true
 				SetFromMousePosition(mouseX)
+			end)
+
+			SliderButton.MouseEnter:Connect(function()
+				ShowToolTip(Slider.ToolTip)
+			end)
+
+			SliderButton.MouseLeave:Connect(function()
+				HideToolTip()
 			end)
 
 			InputService.InputChanged:Connect(function(Input)
@@ -1544,6 +1668,16 @@ function TaskAPI:CreateCategory(CategoryData)
 			end
 		end)
 
+		KeybindButton.MouseButton1Click:Connect(function()
+			if ActiveKeybindModule and ActiveKeybindModule ~= Module then
+				ActiveKeybindModule.WaitingForKeybind = false
+				RefreshModuleDisplay(ActiveKeybindModule)
+			end
+
+			ActiveKeybindModule = Module
+			Module:BeginKeybindCapture()
+		end)
+
 		ArrowButton.MouseButton1Click:Connect(function()
 			Module:SetExpanded(not Module.Expanded)
 		end)
@@ -1562,6 +1696,10 @@ function TaskAPI:CreateCategory(CategoryData)
 		UpdateModuleLayout(Module)
 		UpdateCategorySize(self)
 		RefreshModuleDisplay(Module)
+
+		Module:SetKeybind(RegisterConfigValue("Keybind", Module.ConfigKey, nil), {
+			SkipConfig = true
+		})
 
 		local SavedModuleState = RegisterConfigValue("Module", Module.ConfigKey, false)
 		if SavedModuleState then
@@ -1622,6 +1760,21 @@ function TaskAPI:CreateCategory(CategoryData)
 end
 
 InputService.InputBegan:Connect(function(Input, GameProcessed)
+	if ActiveKeybindModule and ActiveKeybindModule.Button and ActiveKeybindModule.Button.Parent then
+		if Input.UserInputType == Enum.UserInputType.Keyboard then
+			if Input.KeyCode == Enum.KeyCode.Escape or Input.KeyCode == Enum.KeyCode.Backspace then
+				ActiveKeybindModule:SetKeybind(nil)
+			elseif Input.KeyCode ~= Enum.KeyCode.Unknown then
+				ActiveKeybindModule:SetKeybind(Input.KeyCode.Name)
+			end
+
+			ActiveKeybindModule = nil
+		end
+		return
+	elseif ActiveKeybindModule then
+		ActiveKeybindModule = nil
+	end
+
 	if GameProcessed then
 		return
 	end
@@ -1632,6 +1785,28 @@ InputService.InputBegan:Connect(function(Input, GameProcessed)
 		if not ScreenGui.Enabled then
 			HideToolTip()
 		end
+		return
+	end
+
+	if Input.UserInputType == Enum.UserInputType.Keyboard and not InputService:GetFocusedTextBox() then
+		if IsReservedModuleKeybind(Input) then
+			return
+		end
+
+		local CurrentTime = tick()
+		for _, Module in pairs(TaskAPI.Modules) do
+			if type(Module) == "table" and Module.Keybind and Module.Keybind == Input.KeyCode.Name then
+				if (CurrentTime - (Module.LastKeybindToggleAt or 0)) < 0.25 then
+					continue
+				end
+				Module.LastKeybindToggleAt = CurrentTime
+				task.defer(function()
+					if Module.Button and Module.Button.Parent then
+						Module:Toggle()
+					end
+				end)
+			end
+		end
 	end
 end)
 
@@ -1640,21 +1815,6 @@ InputService.InputChanged:Connect(function(Input)
 		UpdateToolTipPosition(Input.Position)
 	end
 end)
-
-table.insert(TaskAPI.Connections, LogService.MessageOut:Connect(function(message, messageType)
-	if messageType ~= Enum.MessageType.MessageError and messageType ~= Enum.MessageType.MessageWarning then
-		return
-	end
-
-	TaskAPI.Notification({
-		Title = GetConsoleNotificationTitle(messageType),
-		Message = tostring(message),
-		Duration = 5,
-		Type = GetConsoleNotificationType(messageType),
-		ClickToCopy = messageType == Enum.MessageType.MessageError,
-		CopyText = tostring(message)
-	})
-end))
 
 function TaskAPI:Shutdown()
 	if type(self.Connections) == "table" then

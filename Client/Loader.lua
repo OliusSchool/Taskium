@@ -494,8 +494,64 @@ local function ExecuteWorkspaceFile(WorkspaceFilePath)
 	return LoadedFunction()
 end
 
+local function GetQueueOnTeleportFunction()
+	if syn and type(syn.queue_on_teleport) == "function" then
+		return syn.queue_on_teleport
+	end
+
+	if type(queue_on_teleport) == "function" then
+		return queue_on_teleport
+	end
+
+	if type(queueonteleport) == "function" then
+		return queueonteleport
+	end
+
+	if fluxus and type(fluxus.queue_on_teleport) == "function" then
+		return fluxus.queue_on_teleport
+	end
+
+	return nil
+end
+
+local function BuildTeleportBootstrapSource()
+	return [[
+local WorkspaceLoaderPath = "Taskium/Client/Loader.lua"
+local LoaderSource
+
+if isfile and isfile(WorkspaceLoaderPath) then
+	local ReadSucceeded, FileContent = pcall(readfile, WorkspaceLoaderPath)
+	if ReadSucceeded and type(FileContent) == "string" and FileContent ~= "" then
+		LoaderSource = FileContent
+	end
+end
+
+if not LoaderSource then
+	LoaderSource = game:HttpGet("https://raw.githubusercontent.com/OliusSchool/Taskium/main/Client/Loader.lua", true)
+end
+
+local LoaderFunction, LoaderError = loadstring(LoaderSource, "@Client/Loader.lua")
+if not LoaderFunction then
+	error("Taskium teleport bootstrap failed to load Client/Loader.lua: " .. tostring(LoaderError))
+end
+
+return LoaderFunction()
+]]
+end
+
+local function QueueTaskiumOnTeleport()
+	local QueueFunction = GetQueueOnTeleportFunction()
+	if not QueueFunction then
+		return false
+	end
+
+	local QueueSucceeded = pcall(QueueFunction, BuildTeleportBootstrapSource())
+	return QueueSucceeded
+end
+
 local function BootTaskium()
 	EnsureBootstrapFilesExist(Taskium.LastSyncReport or CreateEmptySyncReport())
+	QueueTaskiumOnTeleport()
 
 	if Taskium.API and type(Taskium.API.Shutdown) == "function" then
 		pcall(function()
@@ -529,6 +585,7 @@ end
 Taskium.SyncTaskiumFiles = SyncTaskiumFiles
 Taskium.ExecuteFile = ExecuteWorkspaceFile
 Taskium.RestartTaskium = RestartTaskium
+Taskium.QueueOnTeleport = QueueTaskiumOnTeleport
 Taskium.LastSyncReport = nil
 
 LoadSyncState()
