@@ -57,7 +57,6 @@ local function BuildTeleportQueueSource(QueueToken)
 		"local TeleportService = game:GetService('TeleportService')",
 		"if not game:IsLoaded() then game.Loaded:Wait() end",
 		("local QueueToken = %q"):format(QueueToken),
-		"if TeleportService:GetLocalPlayerTeleportData() == nil then return end",
 		("if TeleportService:GetTeleportSetting(%q) ~= QueueToken then return end"):format(TeleportQueueSettingKey),
 		("TeleportService:SetTeleportSetting(%q, nil)"):format(TeleportQueueSettingKey),
 		("loadstring(game:HttpGet(%q, true), %q)()"):format(ClientLoaderUrl, "@Client/Loader.lua")
@@ -83,6 +82,34 @@ local function QueueTaskiumOnTeleport()
 	local QueueSucceeded = pcall(QueueOnTeleport, BuildTeleportQueueSource(QueueToken))
 	Taskium.TeleportQueueArmed = QueueSucceeded
 	return QueueSucceeded
+end
+
+local function ArmTeleportQueueWatcher()
+	local ExistingConnection = Taskium.TeleportQueueConnection
+	if ExistingConnection then
+		pcall(function()
+			ExistingConnection:Disconnect()
+		end)
+		Taskium.TeleportQueueConnection = nil
+	end
+
+	local QueuedThisTeleport = false
+	Taskium.TeleportQueueConnection = LocalPlayer.OnTeleport:Connect(function(TeleportState)
+		if TeleportState == Enum.TeleportState.Failed then
+			QueuedThisTeleport = false
+			return
+		end
+
+		if QueuedThisTeleport then
+			return
+		end
+
+		if TeleportState == Enum.TeleportState.Started
+			or TeleportState == Enum.TeleportState.InProgress
+			or TeleportState == Enum.TeleportState.RequestedFromServer then
+			QueuedThisTeleport = QueueTaskiumOnTeleport()
+		end
+	end)
 end
 
 local function SendHttpRequest(RequestUrl)
@@ -586,9 +613,10 @@ Taskium.SyncTaskiumFiles = SyncTaskiumFiles
 Taskium.ExecuteFile = ExecuteWorkspaceFile
 Taskium.RestartTaskium = RestartTaskium
 Taskium.QueueTaskiumOnTeleport = QueueTaskiumOnTeleport
+Taskium.ArmTeleportQueueWatcher = ArmTeleportQueueWatcher
 Taskium.LastSyncReport = nil
 
-QueueTaskiumOnTeleport()
+ArmTeleportQueueWatcher()
 LoadSyncState()
 
 local InitialSyncReport = SyncTaskiumFiles(false)
