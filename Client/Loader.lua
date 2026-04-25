@@ -1,8 +1,10 @@
 local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
 
 local RawRepositoryUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
 local RepositoryContentsApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
 local ClientLoaderUrl = RawRepositoryUrl .. "Client/Loader.lua"
+local TeleportQueueSettingKey = "TaskiumTeleportQueueToken"
 
 local WorkspaceRootFolder = "Taskium"
 local WorkspaceBaseFolder = WorkspaceRootFolder .. "/Client/Base"
@@ -50,12 +52,15 @@ local function GetQueueOnTeleportFunction()
 	return nil
 end
 
-local function BuildTeleportQueueSource()
-	return string.format(
-		"loadstring(game:HttpGet(%q, true), %q)()",
-		ClientLoaderUrl,
-		"@Client/Loader.lua"
-	)
+local function BuildTeleportQueueSource(QueueToken)
+	return table.concat({
+		"local TeleportService = game:GetService('TeleportService')",
+		"if not game:IsLoaded() then game.Loaded:Wait() end",
+		("local QueueToken = %q"):format(QueueToken),
+		("if TeleportService:GetTeleportSetting(%q) ~= QueueToken then return end"):format(TeleportQueueSettingKey),
+		("TeleportService:SetTeleportSetting(%q, nil)"):format(TeleportQueueSettingKey),
+		("loadstring(game:HttpGet(%q, true), %q)()"):format(ClientLoaderUrl, "@Client/Loader.lua")
+	}, "\n")
 end
 
 local function QueueTaskiumOnTeleport()
@@ -65,7 +70,16 @@ local function QueueTaskiumOnTeleport()
 		return false
 	end
 
-	local QueueSucceeded = pcall(QueueOnTeleport, BuildTeleportQueueSource())
+	local QueueToken = HttpService:GenerateGUID(false)
+	local TeleportSettingSucceeded = pcall(function()
+		TeleportService:SetTeleportSetting(TeleportQueueSettingKey, QueueToken)
+	end)
+	if not TeleportSettingSucceeded then
+		Taskium.TeleportQueueArmed = false
+		return false
+	end
+
+	local QueueSucceeded = pcall(QueueOnTeleport, BuildTeleportQueueSource(QueueToken))
 	Taskium.TeleportQueueArmed = QueueSucceeded
 	return QueueSucceeded
 end
