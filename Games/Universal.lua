@@ -3999,7 +3999,7 @@ local VelocityHookState = RuntimeState.VelocityHook or {}
 RuntimeState.VelocityHook = VelocityHookState
 
 VelocityModule = TaskAPI.Categories.Combat:CreateModule({
-	Name = "VelocityW",
+	Name = "Velocity",
 	Function = function(Enabled, RunId, Module)
 		local HookOwnerToken = "Velocity_" .. tostring(RunId) .. "_" .. tostring(math.floor(os.clock() * 1000))
 

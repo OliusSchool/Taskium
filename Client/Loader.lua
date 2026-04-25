@@ -1,4 +1,7 @@
 local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
 
 local RawRepositoryUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
 local RepositoryContentsApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
