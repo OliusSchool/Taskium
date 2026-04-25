@@ -1,10 +1,8 @@
 local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
 
 local RawRepositoryUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
 local RepositoryContentsApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
 local ClientLoaderUrl = RawRepositoryUrl .. "Client/Loader.lua"
-local TeleportQueueSettingKey = "TaskiumTeleportQueueToken"
 
 local WorkspaceRootFolder = "Taskium"
 local WorkspaceBaseFolder = WorkspaceRootFolder .. "/Client/Base"
@@ -52,13 +50,9 @@ local function GetQueueOnTeleportFunction()
 	return nil
 end
 
-local function BuildTeleportQueueSource(QueueToken)
+local function BuildTeleportQueueSource()
 	return table.concat({
-		"local TeleportService = game:GetService('TeleportService')",
-		"if not game:IsLoaded() then game.Loaded:Wait() end",
-		("local QueueToken = %q"):format(QueueToken),
-		("if TeleportService:GetTeleportSetting(%q) ~= QueueToken then return end"):format(TeleportQueueSettingKey),
-		("TeleportService:SetTeleportSetting(%q, nil)"):format(TeleportQueueSettingKey),
+		"repeat task.wait() until game:IsLoaded()",
 		("loadstring(game:HttpGet(%q, true), %q)()"):format(ClientLoaderUrl, "@Client/Loader.lua")
 	}, "\n")
 end
@@ -70,16 +64,7 @@ local function QueueTaskiumOnTeleport()
 		return false
 	end
 
-	local QueueToken = HttpService:GenerateGUID(false)
-	local TeleportSettingSucceeded = pcall(function()
-		TeleportService:SetTeleportSetting(TeleportQueueSettingKey, QueueToken)
-	end)
-	if not TeleportSettingSucceeded then
-		Taskium.TeleportQueueArmed = false
-		return false
-	end
-
-	local QueueSucceeded = pcall(QueueOnTeleport, BuildTeleportQueueSource(QueueToken))
+	local QueueSucceeded = pcall(QueueOnTeleport, BuildTeleportQueueSource())
 	Taskium.TeleportQueueArmed = QueueSucceeded
 	return QueueSucceeded
 end
@@ -100,22 +85,12 @@ local function ArmTeleportQueueWatcher()
 	end
 
 	local ConnectSucceeded, TeleportConnection = pcall(function()
-		return LocalPlayer.OnTeleport:Connect(function(TeleportState)
-			local TeleportStateName = tostring(TeleportState)
-			if TeleportStateName:find("Failed", 1, true) then
-				QueuedThisTeleport = false
-				return
-			end
-
+		return LocalPlayer.OnTeleport:Connect(function()
 			if QueuedThisTeleport then
 				return
 			end
 
-			if TeleportStateName:find("Started", 1, true)
-				or TeleportStateName:find("InProgress", 1, true)
-				or TeleportStateName:find("RequestedFromServer", 1, true) then
-				QueuedThisTeleport = QueueTaskiumOnTeleport()
-			end
+			QueuedThisTeleport = QueueTaskiumOnTeleport()
 		end)
 	end)
 
