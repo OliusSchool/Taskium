@@ -101,7 +101,8 @@ local function ArmTeleportQueueWatcher()
 
 	local ConnectSucceeded, TeleportConnection = pcall(function()
 		return LocalPlayer.OnTeleport:Connect(function(TeleportState)
-			if TeleportState == Enum.TeleportState.Failed then
+			local TeleportStateName = tostring(TeleportState)
+			if TeleportStateName:find("Failed", 1, true) then
 				QueuedThisTeleport = false
 				return
 			end
@@ -110,9 +111,8 @@ local function ArmTeleportQueueWatcher()
 				return
 			end
 
-			local TeleportStateName = tostring(TeleportState)
-			if TeleportState == Enum.TeleportState.Started
-				or TeleportState == Enum.TeleportState.InProgress
+			if TeleportStateName:find("Started", 1, true)
+				or TeleportStateName:find("InProgress", 1, true)
 				or TeleportStateName:find("RequestedFromServer", 1, true) then
 				QueuedThisTeleport = QueueTaskiumOnTeleport()
 			end
@@ -590,7 +590,13 @@ local function ExecuteWorkspaceFile(WorkspaceFilePath)
 		return nil
 	end
 
-	return LoadedFunction()
+	local ExecutedSuccessfully, ExecutionResult = pcall(LoadedFunction)
+	if not ExecutedSuccessfully then
+		warn("Failed to execute " .. WorkspaceFilePath .. ": " .. tostring(ExecutionResult))
+		return nil
+	end
+
+	return ExecutionResult
 end
 
 local function BootTaskium()
