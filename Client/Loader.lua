@@ -57,6 +57,7 @@ local function BuildTeleportQueueSource(QueueToken)
 		"local TeleportService = game:GetService('TeleportService')",
 		"if not game:IsLoaded() then game.Loaded:Wait() end",
 		("local QueueToken = %q"):format(QueueToken),
+		"if TeleportService:GetLocalPlayerTeleportData() == nil then return end",
 		("if TeleportService:GetTeleportSetting(%q) ~= QueueToken then return end"):format(TeleportQueueSettingKey),
 		("TeleportService:SetTeleportSetting(%q, nil)"):format(TeleportQueueSettingKey),
 		("loadstring(game:HttpGet(%q, true), %q)()"):format(ClientLoaderUrl, "@Client/Loader.lua")
