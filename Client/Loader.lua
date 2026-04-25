@@ -94,22 +94,38 @@ local function ArmTeleportQueueWatcher()
 	end
 
 	local QueuedThisTeleport = false
-	Taskium.TeleportQueueConnection = LocalPlayer.OnTeleport:Connect(function(TeleportState)
-		if TeleportState == Enum.TeleportState.Failed then
-			QueuedThisTeleport = false
-			return
-		end
+	if not LocalPlayer then
+		Taskium.TeleportQueueConnection = nil
+		return false
+	end
 
-		if QueuedThisTeleport then
-			return
-		end
+	local ConnectSucceeded, TeleportConnection = pcall(function()
+		return LocalPlayer.OnTeleport:Connect(function(TeleportState)
+			if TeleportState == Enum.TeleportState.Failed then
+				QueuedThisTeleport = false
+				return
+			end
 
-		if TeleportState == Enum.TeleportState.Started
-			or TeleportState == Enum.TeleportState.InProgress
-			or TeleportState == Enum.TeleportState.RequestedFromServer then
-			QueuedThisTeleport = QueueTaskiumOnTeleport()
-		end
+			if QueuedThisTeleport then
+				return
+			end
+
+			local TeleportStateName = tostring(TeleportState)
+			if TeleportState == Enum.TeleportState.Started
+				or TeleportState == Enum.TeleportState.InProgress
+				or TeleportStateName:find("RequestedFromServer", 1, true) then
+				QueuedThisTeleport = QueueTaskiumOnTeleport()
+			end
+		end)
 	end)
+
+	if not ConnectSucceeded then
+		Taskium.TeleportQueueConnection = nil
+		return false
+	end
+
+	Taskium.TeleportQueueConnection = TeleportConnection
+	return true
 end
 
 local function SendHttpRequest(RequestUrl)
@@ -616,7 +632,7 @@ Taskium.QueueTaskiumOnTeleport = QueueTaskiumOnTeleport
 Taskium.ArmTeleportQueueWatcher = ArmTeleportQueueWatcher
 Taskium.LastSyncReport = nil
 
-ArmTeleportQueueWatcher()
+pcall(ArmTeleportQueueWatcher)
 LoadSyncState()
 
 local InitialSyncReport = SyncTaskiumFiles(false)
