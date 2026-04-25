@@ -1,4 +1,5 @@
 local TaskAPI = getgenv().TaskAPI or (getgenv().Taskium and getgenv().Taskium.API)
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
@@ -18,7 +19,15 @@ end
 local CreateTaskiumStore
 local SyncTaskiumStore
 local EnsureBedwarsRuntime
-local GetGroundHitRemote
+local RoundToBlockGrid
+local GetPlacedBlockAt
+local GetBlocksInPoints
+local RuntimeState = rawget(getgenv(), "TaskiumRuntimeState")
+
+if type(RuntimeState) ~= "table" then
+	RuntimeState = {}
+	getgenv().TaskiumRuntimeState = RuntimeState
+end
 
 local function GetCharacterState()
 	local Character = LocalPlayer and LocalPlayer.Character
@@ -191,22 +200,9 @@ local function RestoreBaseMovementSpeed()
 	end
 end
 
-local GravityModule
-local DefaultWorkspaceGravity
-local GravityValue
-
-local function ApplyWorkspaceGravity()
-	if GravityModule and GravityModule.Enabled then
-		workspace.Gravity = GravityValue
-	else
-		workspace.Gravity = DefaultWorkspaceGravity
-	end
-end
-
 local SpeedModule
 local SpeedValue
 local SpeedBypass
-local LongJumpModule
 
 SpeedValue = 23
 SpeedBypass = false
@@ -311,28 +307,26 @@ SpeedModule = TaskAPI.Categories.Movement:CreateModule({
 
 		ResetSpeed()
 	end,
-	ToolTip = "Moves your character with CFrame speed.",
-	Sliders = {
-		{
-			Name = "Speed",
-			Min = 1,
-			Max = 23,
-			Default = 23,
-			Function = function(Value)
-				SpeedValue = Value
-			end,
-			ToolTip = "Adjusts the CFrame speed value."
-		}
-	},
-	Toggles = {
-		{
-			Name = "Bypass",
-			Function = function(Callback)
-				SpeedBypass = Callback
-			end,
-			ToolTip = "Every 5 seconds, adds a small teleporty burst with a slight speed boost."
-		}
-	}
+	ToolTip = "Moves your character with CFrame speed."
+})
+
+SpeedModule:CreateSlider({
+	Name = "Speed",
+	Min = 1,
+	Max = 23,
+	Default = 23,
+	Function = function(Value)
+		SpeedValue = Value
+	end,
+	ToolTip = "Adjusts the CFrame speed value."
+})
+
+SpeedModule:CreateToggle({
+	Name = "Bypass",
+	Function = function(Callback)
+		SpeedBypass = Callback
+	end,
+	ToolTip = "Every 5 seconds, adds a small teleporty burst with a slight speed boost."
 })
 
 FlySpeedValue = 23
@@ -603,59 +597,59 @@ FlyModule = TaskAPI.Categories.Movement:CreateModule({
 		ResetFlyState()
 		ResetCharacter()
 	end,
-	ToolTip = "Makes you go zoom.",
-	Toggles = {
-		{
-			Name = "TP Down",
-			Function = function(Callback)
-				FlyTPDown = Callback
-				if not Callback then
-					local _, _, RootPart = GetCharacterState()
-					if FlyOldY and RootPart then
-						RootPart.CFrame = RootPart.CFrame + Vector3.new(
-							0,
-							FlyOldY - RootPart.Position.Y,
-							0
-						)
-					end
-					ResetFlyState()
-				end
-			end,
-			ToolTip = "TPs to ground every 2s to bypass anticheat, then back up."
-		},
-		{
-			Name = "Show Fly Bar",
-			Function = function(Callback)
-				FlyShowBar = Callback
-			end,
-			ToolTip = "Shows the fly timer bar."
-		}
-	},
-	Sliders = {
-		{
-			Name = "Speed",
-			Min = 1,
-			Max = 23,
-			Default = 23,
-			Function = function(Value)
-				FlySpeedValue = Value
-			end,
-			ToolTip = "Horizontal fly speed."
-		},
-		{
-			Name = "Vertical Speed",
-			Min = 1,
-			Max = 150,
-			Default = 50,
-			Function = function(Value)
-				FlyVerticalSpeed = Value
-			end,
-			ToolTip = "Up/down speed. Space = up, Shift = down."
-		}
-	},
-	Dropdowns = {}
+	ToolTip = "Makes you go zoom."
 })
 
+FlyModule:CreateToggle({
+	Name = "TP Down",
+	Function = function(Callback)
+		FlyTPDown = Callback
+		if not Callback then
+			local _, _, RootPart = GetCharacterState()
+			if FlyOldY and RootPart then
+				RootPart.CFrame = RootPart.CFrame + Vector3.new(
+					0,
+					FlyOldY - RootPart.Position.Y,
+					0
+				)
+			end
+			ResetFlyState()
+		end
+	end,
+	ToolTip = "TPs to ground every 2s to bypass anticheat, then back up."
+})
+
+FlyModule:CreateToggle({
+	Name = "Show Fly Bar",
+	Function = function(Callback)
+		FlyShowBar = Callback
+	end,
+	ToolTip = "Shows the fly timer bar."
+})
+
+FlyModule:CreateSlider({
+	Name = "Speed",
+	Min = 1,
+	Max = 23,
+	Default = 23,
+	Function = function(Value)
+		FlySpeedValue = Value
+	end,
+	ToolTip = "Horizontal fly speed."
+})
+
+FlyModule:CreateSlider({
+	Name = "Vertical Speed",
+	Min = 1,
+	Max = 150,
+	Default = 50,
+	Function = function(Value)
+		FlyVerticalSpeed = Value
+	end,
+	ToolTip = "Up/down speed. Space = up, Shift = down."
+})
+
+local LongJumpModule
 local LongJumpSpeed
 local LJCooldownDuration
 local LongJumpNextUse
@@ -938,23 +932,32 @@ LongJumpModule = TaskAPI.Categories.Movement:CreateModule({
 			)
 		end))
 	end,
-	ToolTip = "Launches you farther forward!",
-	Toggles = {
-		{
-			Name = "No Cooldown",
-			Function = function(Callback)
-				LJNoCooldown = Callback
-				if Callback then
-					LongJumpNextUse = 0
-					LJCooldownNotification = nil
-				end
-			end,
-			ToolTip = "Removes the LongJump cooldown."
-		}
-	},
-	Sliders = {},
-	Dropdowns = {}
+	ToolTip = "Launches you farther forward!"
 })
+
+LongJumpModule:CreateToggle({
+	Name = "No Cooldown",
+	Function = function(Callback)
+		LJNoCooldown = Callback
+		if Callback then
+			LongJumpNextUse = 0
+			LJCooldownNotification = nil
+		end
+	end,
+	ToolTip = "Removes the LongJump cooldown."
+})
+
+local GravityModule
+local DefaultWorkspaceGravity
+local GravityValue
+
+local function ApplyWorkspaceGravity()
+	if GravityModule and GravityModule.Enabled then
+		workspace.Gravity = GravityValue
+	else
+		workspace.Gravity = DefaultWorkspaceGravity
+	end
+end
 
 DefaultWorkspaceGravity = workspace.Gravity
 GravityValue = DefaultWorkspaceGravity
@@ -972,24 +975,505 @@ GravityModule = TaskAPI.Categories.Movement:CreateModule({
 
 		ApplyWorkspaceGravity()
 	end,
-	ToolTip = "Changes your local gravity.",
-	Sliders = {
-		{
-			Name = "Gravity",
-			Min = 1,
-			Max = 196,
-			Default = math.floor(DefaultWorkspaceGravity + 0.5),
-			Function = function(Value)
-				GravityValue = Value
-				if GravityModule and GravityModule.Enabled then
-					workspace.Gravity = GravityValue
+	ToolTip = "Changes your local gravity."
+})
+
+GravityModule:CreateSlider({
+	Name = "Gravity",
+	Min = 1,
+	Max = 196,
+	Default = math.floor(DefaultWorkspaceGravity + 0.5),
+	Function = function(Value)
+		GravityValue = Value
+		if GravityModule and GravityModule.Enabled then
+			workspace.Gravity = GravityValue
+		end
+	end,
+	ToolTip = "Adjusts your gravity value."
+})
+
+local AntiVoidModule
+local AntiVoidMode = "Normal"
+local AntiVoidMaterial = "ForceField"
+local AntiVoidRange = 10
+local AntiVoidPart
+local AntiVoidDirection
+local AntiVoidOpacity = 50
+local NoFallModule
+local ClimbModule
+local BedwarsBlockSize = 3
+local NoFallRange = 6
+local NoFallMinHeight = 5
+local NoFallTriggerDistance = 1
+local NoFallTeleportHeight = 6
+local NoFallReturnHeight = 1
+local NoFallTeleportDelay = 0.015
+local ClimbWallRayLength = 3.5
+local ClimbUpSpeed = 24
+local ClimbLedgeProbeHeight = 3.5
+local ClimbLedgeForwardDistance = 1.35
+local ClimbLedgeDownDistance = 6
+local ClimbLedgeSnapHeight = 0.75
+
+local function GetAntiVoidLowGround(BedwarsReference)
+	local BlockController = BedwarsReference and BedwarsReference.BlockController
+	local BlockStore = BlockController and type(BlockController.getStore) == "function" and BlockController:getStore()
+	if not (BlockStore and type(BlockStore.getAllBlockPositions) == "function") then
+		return nil
+	end
+
+	local LowestY = math.huge
+	for _, BlockPosition in BlockStore:getAllBlockPositions() do
+		local WorldPosition = BlockPosition * 3
+		local UpperBlock = GetPlacedBlockAt(BedwarsReference, WorldPosition + Vector3.new(0, 3, 0))
+		if WorldPosition.Y < LowestY and not UpperBlock then
+			LowestY = WorldPosition.Y
+		end
+	end
+
+	if LowestY == math.huge then
+		return nil
+	end
+
+	return LowestY
+end
+
+local function GetAntiVoidNearGround(BedwarsReference, Range)
+	local _, _, RootPart = GetCharacterState()
+	if not RootPart then
+		return nil
+	end
+
+	local SearchRange = Vector3.new(3, 3, 3) * (Range or AntiVoidRange or 10)
+	local LocalPosition = RootPart.Position
+	local StartPoint = Vector3.new(
+		math.round((LocalPosition.X - SearchRange.X) / 3),
+		math.round((LocalPosition.Y - SearchRange.Y) / 3),
+		math.round((LocalPosition.Z - SearchRange.Z) / 3)
+	)
+	local EndPoint = Vector3.new(
+		math.round((LocalPosition.X + SearchRange.X) / 3),
+		math.round((LocalPosition.Y + SearchRange.Y) / 3),
+		math.round((LocalPosition.Z + SearchRange.Z) / 3)
+	)
+
+	local ClosestDistance = 60
+	local ClosestPosition = nil
+	for _, WorldPosition in ipairs(GetBlocksInPoints(BedwarsReference, StartPoint, EndPoint)) do
+		local UpperBlock = GetPlacedBlockAt(BedwarsReference, WorldPosition + Vector3.new(0, 3, 0))
+		if not UpperBlock then
+			local Distance = (LocalPosition - WorldPosition).Magnitude
+			if Distance < ClosestDistance then
+				ClosestDistance = Distance
+				ClosestPosition = WorldPosition + Vector3.new(0, 3, 0)
+			end
+		end
+	end
+
+	return ClosestPosition
+end
+
+local function UpdateAntiVoidPartAppearance()
+	if not AntiVoidPart then
+		return
+	end
+
+	AntiVoidPart.Material = Enum.Material[AntiVoidMaterial] or Enum.Material.ForceField
+	AntiVoidPart.Transparency = 1 - math.clamp(AntiVoidOpacity / 100, 0, 1)
+	AntiVoidPart.CanCollide = AntiVoidMode == "Collide"
+end
+
+AntiVoidModule = TaskAPI.Categories.Movement:CreateModule({
+	Name = "AntiVoid",
+	Function = function(Enabled, RunId, Module)
+		AntiVoidDirection = nil
+		AntiVoidPart = nil
+
+		if not Enabled then
+			return
+		end
+
+		local BedwarsReference = rawget(getgenv(), "bedwars") or EnsureBedwarsRuntime()
+		local Store = CreateTaskiumStore()
+
+		repeat
+			task.wait()
+			Store = CreateTaskiumStore()
+		until not Module:IsActive(RunId) or (Store and Store.matchState ~= 0)
+
+		if not Module:IsActive(RunId) then
+			return
+		end
+
+		BedwarsReference = rawget(getgenv(), "bedwars") or EnsureBedwarsRuntime() or BedwarsReference
+		local LowGroundY = GetAntiVoidLowGround(BedwarsReference)
+		if not LowGroundY then
+			TaskAPI.Notification("Taskium", "AntiVoid couldn't find BedWars ground data.", 5, "Error")
+			Module:SetEnabled(false, {
+				SkipNotify = true
+			})
+			return
+		end
+
+		local RescuePart = Instance.new("Part")
+		RescuePart.Name = "TaskiumAntiVoidPart"
+		RescuePart.Size = Vector3.new(10000, 1, 10000)
+		RescuePart.Position = Vector3.new(0, LowGroundY - 2, 0)
+		RescuePart.Anchored = true
+		RescuePart.CanQuery = false
+		RescuePart.CanTouch = true
+		RescuePart.Color = Color3.fromRGB(255, 255, 255)
+		RescuePart.Parent = workspace
+		AntiVoidPart = RescuePart
+		UpdateAntiVoidPartAppearance()
+		Module:Clean(RescuePart)
+		Module:Clean(function()
+			AntiVoidDirection = nil
+			if AntiVoidPart == RescuePart then
+				AntiVoidPart = nil
+			end
+		end)
+
+		local TouchDebounce = 0
+		Module:Clean(RescuePart.Touched:Connect(function(TouchedPart)
+			if not Module:IsActive(RunId) or TouchDebounce > tick() then
+				return
+			end
+
+			local Character, Humanoid, RootPart = GetCharacterState()
+			if not (Character and Humanoid and RootPart and Humanoid.Health > 0) then
+				return
+			end
+
+			if TouchedPart.Parent ~= Character then
+				return
+			end
+
+			TouchDebounce = tick() + 0.1
+			if AntiVoidMode == "Velocity" then
+				RootPart.Velocity = Vector3.new(RootPart.Velocity.X, 100, RootPart.Velocity.Z)
+				return
+			end
+
+			if AntiVoidMode ~= "Normal" then
+				return
+			end
+
+			local RescuePosition = GetAntiVoidNearGround(BedwarsReference, AntiVoidRange)
+			if not RescuePosition then
+				return
+			end
+
+			local LastTeleported = LocalPlayer:GetAttribute("LastTeleported")
+			local RayCheck = RaycastParams.new()
+			RayCheck.RespectCanCollide = true
+
+			local RescueConnection
+			RescueConnection = RunService.PreSimulation:Connect(function()
+				if not Module:IsActive(RunId) then
+					AntiVoidDirection = nil
+					RescueConnection:Disconnect()
+					return
 				end
-			end,
-			ToolTip = "Adjusts your gravity value."
-		}
-	},
-	Toggles = {},
-	Dropdowns = {}
+
+				if (FlyModule and FlyModule.Enabled) or (LongJumpModule and LongJumpModule.Enabled) then
+					AntiVoidDirection = nil
+					RescueConnection:Disconnect()
+					return
+				end
+
+				local CurrentCharacter, CurrentHumanoid, CurrentRootPart = GetCharacterState()
+				if not (CurrentCharacter and CurrentHumanoid and CurrentRootPart and CurrentHumanoid.Health > 0) then
+					AntiVoidDirection = nil
+					RescueConnection:Disconnect()
+					return
+				end
+
+				if LocalPlayer:GetAttribute("LastTeleported") ~= LastTeleported then
+					AntiVoidDirection = nil
+					RescueConnection:Disconnect()
+					return
+				end
+
+				local Delta = (RescuePosition - CurrentRootPart.Position) * Vector3.new(1, 0, 1)
+				AntiVoidDirection = Delta.Unit == Delta.Unit and Delta.Unit or Vector3.zero
+				CurrentRootPart.Velocity = CurrentRootPart.Velocity * Vector3.new(1, 0, 1)
+				RayCheck.FilterDescendantsInstances = { workspace.CurrentCamera, CurrentCharacter }
+				RayCheck.CollisionGroup = CurrentRootPart.CollisionGroup
+
+				local WallRaycast = workspace:Raycast(CurrentRootPart.Position, AntiVoidDirection, RayCheck)
+				if WallRaycast then
+					for _ = 1, 10 do
+						local ShiftedPosition = RoundToBlockGrid(WallRaycast.Position + (WallRaycast.Normal * 1.5)) + Vector3.new(0, 3, 0)
+						if not GetPlacedBlockAt(BedwarsReference, ShiftedPosition) then
+							RescuePosition = Vector3.new(RescuePosition.X, LowGroundY, RescuePosition.Z)
+							break
+						end
+					end
+				end
+
+				CurrentRootPart.CFrame = CurrentRootPart.CFrame + Vector3.new(0, RescuePosition.Y - CurrentRootPart.Position.Y, 0)
+				CurrentRootPart.AssemblyLinearVelocity = (AntiVoidDirection * math.max(GetBedwarsSpeed(), 16)) + Vector3.new(0, CurrentRootPart.AssemblyLinearVelocity.Y, 0)
+
+				if Delta.Magnitude < 1 then
+					AntiVoidDirection = nil
+					RescueConnection:Disconnect()
+				end
+			end)
+			Module:Clean(RescueConnection)
+		end))
+	end,
+	ToolTip = "Prevents you from falling into the void in BedWars."
+})
+
+AntiVoidModule:CreateDropdown({
+	Name = "Move Mode",
+	List = { "Normal", "Collide", "Velocity" },
+	Function = function(Value)
+		AntiVoidMode = Value
+		UpdateAntiVoidPartAppearance()
+	end,
+	ToolTip = "Normal moves you to nearby ground, Collide lets you stand on the platform, Velocity launches you upward."
+})
+
+local AntiVoidMaterials = { "ForceField" }
+for _, Material in ipairs(Enum.Material:GetEnumItems()) do
+	if Material.Name ~= "ForceField" then
+		table.insert(AntiVoidMaterials, Material.Name)
+	end
+end
+
+AntiVoidModule:CreateDropdown({
+	Name = "Material",
+	List = AntiVoidMaterials,
+	Function = function(Value)
+		AntiVoidMaterial = Value
+		UpdateAntiVoidPartAppearance()
+	end,
+	ToolTip = "Changes the AntiVoid platform material."
+})
+
+AntiVoidModule:CreateSlider({
+	Name = "Opacity",
+	Min = 0,
+	Max = 100,
+	Default = 50,
+	Function = function(Value)
+		AntiVoidOpacity = Value
+		UpdateAntiVoidPartAppearance()
+	end,
+	Suffix = "%",
+	ToolTip = "Adjusts how visible the AntiVoid platform is."
+})
+
+AntiVoidModule:CreateSlider({
+	Name = "Search Range",
+	Min = 4,
+	Max = 20,
+	Default = 10,
+	Function = function(Value)
+		AntiVoidRange = Value
+	end,
+	ToolTip = "How far AntiVoid looks for nearby rescue ground."
+})
+
+NoFallModule = TaskAPI.Categories.Movement:CreateModule({
+	Name = "NoFall",
+	Function = function(Enabled, RunId, Module)
+		if not Enabled then
+			return
+		end
+
+		local FallStartY = nil
+		local HasTriggeredThisFall = false
+		local TeleportSequenceToken = 0
+
+		local function PlaceRootAt(RootPart, Position)
+			RootPart.CFrame = CFrame.lookAlong(Position, RootPart.CFrame.LookVector)
+		end
+
+		Module:Clean(function()
+			TeleportSequenceToken = TeleportSequenceToken + 1
+		end)
+
+		Module:Clean(RunService.PreSimulation:Connect(function(DeltaTime)
+			if not Module:IsActive(RunId) then
+				return
+			end
+
+			local Character, Humanoid, RootPart = GetCharacterState()
+			if not (Character and Humanoid and RootPart and Humanoid.Health > 0) then
+				FallStartY = nil
+				HasTriggeredThisFall = false
+				return
+			end
+
+			local HumanoidState = Humanoid:GetState()
+			local Grounded = IsCharacterGrounded(RootPart)
+			local VerticalVelocity = RootPart.AssemblyLinearVelocity.Y
+			local RangeStuds = NoFallRange * BedwarsBlockSize
+			local Store = rawget(getgenv(), "store")
+			local GroundRay = workspace:Raycast(
+				RootPart.Position,
+				Vector3.new(0, -RangeStuds, 0),
+				(Store and Store.airRay) or FlyRaycast
+			)
+
+			FallStartY = FallStartY or RootPart.Position.Y
+
+			if VerticalVelocity < -1 and not HasTriggeredThisFall and GroundRay then
+				local LandingY = GroundRay.Position.Y + Humanoid.HipHeight
+				local FallHeight = math.max((FallStartY or RootPart.Position.Y) - LandingY, 0)
+				local DistanceToLanding = math.max(RootPart.Position.Y - LandingY, 0)
+				local PredictedDrop = math.max((-VerticalVelocity) * (DeltaTime or (1 / 60)), 0)
+				local TriggerDistanceStuds = (NoFallTriggerDistance * BedwarsBlockSize) + PredictedDrop
+				if FallHeight >= (NoFallMinHeight * BedwarsBlockSize)
+					and DistanceToLanding <= TriggerDistanceStuds then
+					HasTriggeredThisFall = true
+					TeleportSequenceToken = TeleportSequenceToken + 1
+					local CurrentToken = TeleportSequenceToken
+					local LandingPosition = Vector3.new(
+						GroundRay.Position.X,
+						LandingY,
+						GroundRay.Position.Z
+					)
+					local AboveLandingPosition = LandingPosition + Vector3.new(0, NoFallTeleportHeight * BedwarsBlockSize, 0)
+					local ReturnPosition = LandingPosition + Vector3.new(0, NoFallReturnHeight * BedwarsBlockSize, 0)
+
+					pcall(function()
+						PlaceRootAt(RootPart, AboveLandingPosition)
+					end)
+					task.delay(NoFallTeleportDelay, function()
+						if TeleportSequenceToken ~= CurrentToken or not Module:IsActive(RunId) then
+							return
+						end
+
+						local CurrentCharacter, CurrentHumanoid, CurrentRootPart = GetCharacterState()
+						if not (CurrentCharacter and CurrentHumanoid and CurrentRootPart and CurrentHumanoid.Health > 0) then
+							return
+						end
+
+						pcall(function()
+							PlaceRootAt(CurrentRootPart, ReturnPosition)
+						end)
+					end)
+					return
+				end
+			end
+
+			if Grounded
+				or HumanoidState == Enum.HumanoidStateType.Landed
+				or HumanoidState == Enum.HumanoidStateType.Running
+				or HumanoidState == Enum.HumanoidStateType.RunningNoPhysics
+				or HumanoidState == Enum.HumanoidStateType.Climbing
+				or HumanoidState == Enum.HumanoidStateType.Swimming
+				or HumanoidState == Enum.HumanoidStateType.Seated then
+				FallStartY = RootPart.Position.Y
+				HasTriggeredThisFall = false
+				return
+			end
+		end))
+	end,
+	ToolTip = "When you're about to land, teleports you upward and lets you fall naturally."
+})
+
+ClimbModule = TaskAPI.Categories.Movement:CreateModule({
+	Name = "Climb",
+	Function = function(Enabled, RunId, Module)
+		if not Enabled then
+			return
+		end
+
+		local ClimbRaycast = RaycastParams.new()
+		ClimbRaycast.RespectCanCollide = true
+
+		Module:Clean(RunService.PreSimulation:Connect(function()
+			if not Module:IsActive(RunId) then
+				return
+			end
+
+			local Character, Humanoid, RootPart = GetCharacterState()
+			if not (Character and Humanoid and RootPart and Humanoid.Health > 0) then
+				return
+			end
+
+			if (FlyModule and FlyModule.Enabled) or (LongJumpModule and LongJumpModule.Enabled) then
+				return
+			end
+
+			local HumanoidState = Humanoid:GetState()
+			if HumanoidState == Enum.HumanoidStateType.Swimming or HumanoidState == Enum.HumanoidStateType.Seated then
+				return
+			end
+
+			local MoveDirection = Humanoid.MoveDirection
+			if MoveDirection.Magnitude <= 0.001 then
+				return
+			end
+
+			ClimbRaycast.FilterDescendantsInstances = { Character, workspace.CurrentCamera }
+			ClimbRaycast.CollisionGroup = RootPart.CollisionGroup
+
+			local WallRaycast = workspace:Raycast(
+				RootPart.Position,
+				MoveDirection.Unit * ClimbWallRayLength,
+				ClimbRaycast
+			)
+			if not WallRaycast or math.abs(WallRaycast.Normal.Y) > 0.3 then
+				return
+			end
+
+			local CurrentVelocity = RootPart.AssemblyLinearVelocity
+			local HorizontalVelocity = MoveDirection.Unit * math.max(GetBedwarsSpeed(), 16)
+			RootPart.AssemblyLinearVelocity = Vector3.new(
+				HorizontalVelocity.X,
+				math.max(CurrentVelocity.Y, ClimbUpSpeed),
+				HorizontalVelocity.Z
+			)
+
+			local LedgeProbeOrigin = RootPart.Position + Vector3.new(0, Humanoid.HipHeight + ClimbLedgeProbeHeight, 0)
+			local LedgeForwardOffset = MoveDirection.Unit * ClimbLedgeForwardDistance
+			local UpperWallRaycast = workspace:Raycast(
+				LedgeProbeOrigin,
+				LedgeForwardOffset,
+				ClimbRaycast
+			)
+			if not UpperWallRaycast then
+				local LedgeDownRaycast = workspace:Raycast(
+					LedgeProbeOrigin + LedgeForwardOffset,
+					Vector3.new(0, -ClimbLedgeDownDistance, 0),
+					ClimbRaycast
+				)
+				if LedgeDownRaycast and LedgeDownRaycast.Normal.Y > 0.6 then
+					local SnapPosition = Vector3.new(
+						LedgeDownRaycast.Position.X,
+						LedgeDownRaycast.Position.Y + Humanoid.HipHeight + ClimbLedgeSnapHeight,
+						LedgeDownRaycast.Position.Z
+					)
+					pcall(function()
+						RootPart.CFrame = CFrame.lookAlong(SnapPosition, RootPart.CFrame.LookVector)
+						RootPart.AssemblyLinearVelocity = Vector3.new(
+							HorizontalVelocity.X,
+							math.max(RootPart.AssemblyLinearVelocity.Y, ClimbUpSpeed * 0.35),
+							HorizontalVelocity.Z
+						)
+					end)
+				end
+			end
+		end))
+	end,
+	ToolTip = "Climbs walls while you move into them."
+})
+
+ClimbModule:CreateSlider({
+	Name = "Speed",
+	Min = 8,
+	Max = 60,
+	Default = 24,
+	Function = function(Value)
+		ClimbUpSpeed = Value
+	end,
+	ToolTip = "Adjusts how fast Climb pushes you upward."
 })
 
 local ScaffoldModule
@@ -1010,7 +1494,7 @@ for X = -3, 3, 3 do
 	end
 end
 
-local function RoundToBlockGrid(Position)
+RoundToBlockGrid = function(Position)
 	local RoundFunction = rawget(getgenv(), "roundPos")
 	if type(RoundFunction) == "function" then
 		local Success, Result = pcall(RoundFunction, Position)
@@ -1026,7 +1510,7 @@ local function RoundToBlockGrid(Position)
 	)
 end
 
-local function GetPlacedBlockAt(BedwarsReference, Position)
+GetPlacedBlockAt = function(BedwarsReference, Position)
 	local GetPlacedBlockFunction = rawget(getgenv(), "getPlacedBlock")
 	if type(GetPlacedBlockFunction) == "function" then
 		local Success, Block, BlockPosition = pcall(GetPlacedBlockFunction, Position)
@@ -1163,7 +1647,7 @@ local function CalculateBreakerPath(BedwarsReference, TargetBlock, StartWorldPos
 	return BestPosition, BestCost, Path
 end
 
-local function GetBlocksInPoints(BedwarsReference, StartPoint, EndPoint)
+GetBlocksInPoints = function(BedwarsReference, StartPoint, EndPoint)
 	local BlockController = BedwarsReference and BedwarsReference.BlockController
 	local BlockStore = BlockController and type(BlockController.getStore) == "function" and BlockController:getStore()
 	if not (BlockController and BlockStore and type(BlockStore.getBlockAt) == "function") then
@@ -1337,6 +1821,8 @@ ScaffoldModule = TaskAPI.Categories.Movement:CreateModule({
 					local BlockItemType = GetScaffoldBlock(BedwarsNow, Store)
 
 					if BlockItemType then
+						local PlacementIssued = false
+
 						if ScaffoldTower and UserInputService:IsKeyDown(Enum.KeyCode.Space) and not UserInputService:GetFocusedTextBox() then
 							RootPart.Velocity = Vector3.new(RootPart.Velocity.X, 38, RootPart.Velocity.Z)
 						end
@@ -1362,13 +1848,21 @@ ScaffoldModule = TaskAPI.Categories.Movement:CreateModule({
 							if not ExistingBlock and BlockPosition then
 								local PlacementPosition = CheckAdjacentBlock(BedwarsNow, BlockPosition * 3) and (BlockPosition * 3) or BlockProximity(BedwarsNow, CurrentPosition)
 								if PlacementPosition then
-									task.spawn(PlaceBlockFunction, PlacementPosition, BlockItemType, false)
+									PlacementIssued = true
+									task.defer(PlaceBlockFunction, PlacementPosition, BlockItemType, false)
 									SwitchTime = tick() + 0.25
 									IsScaffolding = true
+									LastPosition = CurrentPosition
+									break
 								end
 							end
 
 							LastPosition = CurrentPosition
+						end
+
+						if PlacementIssued then
+							task.wait(0.03)
+							continue
 						end
 					end
 				end
@@ -1381,46 +1875,45 @@ ScaffoldModule = TaskAPI.Categories.Movement:CreateModule({
 			until not Module:IsActive(RunId)
 		end)
 	end,
-	ToolTip = "Helps you make bridges/scaffold walk.",
-	Toggles = {
-		{
-			Name = "Tower",
-			Function = function(Callback)
-				ScaffoldTower = Callback
-			end,
-			Default = true,
-			ToolTip = "Jumps upward while scaffolding when Space is held."
-		},
-		{
-			Name = "Downwards",
-			Function = function(Callback)
-				ScaffoldDownwards = Callback
-			end,
-			Default = true,
-			ToolTip = "Places lower when LeftShift is held."
-		},
-		{
-			Name = "Diagonal",
-			Function = function(Callback)
-				ScaffoldDiagonal = Callback
-			end,
-			Default = true,
-			ToolTip = "Keeps diagonal scaffold placement stable."
-		}
-	},
-	Sliders = {
-		{
-			Name = "Expand",
-			Min = 1,
-			Max = 6,
-			Default = 1,
-			Function = function(Value)
-				ScaffoldExpand = Value
-			end,
-			ToolTip = "How far ahead to place blocks."
-		}
-	},
-	Dropdowns = {}
+	ToolTip = "Helps you make bridges/scaffold walk."
+})
+
+ScaffoldModule:CreateToggle({
+	Name = "Tower",
+	Function = function(Callback)
+		ScaffoldTower = Callback
+	end,
+	Default = true,
+	ToolTip = "Jumps upward while scaffolding when Space is held."
+})
+
+ScaffoldModule:CreateToggle({
+	Name = "Downwards",
+	Function = function(Callback)
+		ScaffoldDownwards = Callback
+	end,
+	Default = true,
+	ToolTip = "Places lower when LeftShift is held."
+})
+
+ScaffoldModule:CreateToggle({
+	Name = "Diagonal",
+	Function = function(Callback)
+		ScaffoldDiagonal = Callback
+	end,
+	Default = true,
+	ToolTip = "Keeps diagonal scaffold placement stable."
+})
+
+ScaffoldModule:CreateSlider({
+	Name = "Expand",
+	Min = 1,
+	Max = 6,
+	Default = 1,
+	Function = function(Value)
+		ScaffoldExpand = Value
+	end,
+	ToolTip = "How far ahead to place blocks."
 })
 
 local ESPModule
@@ -1624,23 +2117,23 @@ ESPModule = TaskAPI.Categories.Render:CreateModule({
 			end
 		end))
 	end,
-	ToolTip = "Highlights players through walls.",
-	Toggles = {
-		{
-			Name = "Teammates",
-			Function = function(Callback)
-				ESPShowTeammates = Callback
-			end,
-			ToolTip = "Shows teammates too."
-		},
-		{
-			Name = "Team Colors",
-			Function = function(Callback)
-				ESPUseTeamColors = Callback
-			end,
-			ToolTip = "Uses Roblox team colors when available."
-		}
-	}
+	ToolTip = "Highlights players through walls."
+})
+
+ESPModule:CreateToggle({
+	Name = "Teammates",
+	Function = function(Callback)
+		ESPShowTeammates = Callback
+	end,
+	ToolTip = "Shows teammates too."
+})
+
+ESPModule:CreateToggle({
+	Name = "Team Colors",
+	Function = function(Callback)
+		ESPUseTeamColors = Callback
+	end,
+	ToolTip = "Uses Roblox team colors when available."
 })
 
 local SettingsModule
@@ -1874,33 +2367,31 @@ SettingsModule = TaskAPI.Categories.Other:CreateModule({
 			StopArraylist()
 		end
 	end,
-	ToolTip = "Contains persistent Taskium settings.",
-	Toggles = {
-		{
-			Name = "Arraylist",
-			Function = function(Enabled)
-				if Enabled then
-					StartArraylist()
-				else
-					StopArraylist()
-				end
-			end,
-			ToolTip = "Displays enabled modules in the top-right corner."
-		}
-	},
-	Sliders = {
-		{
-			Name = "Text Size",
-			Min = 12,
-			Max = 30,
-			Default = 16,
-			Function = function(Value)
-				ArraylistTextSize = Value
-				ArraylistLayoutSignature = nil
-			end,
-			ToolTip = "Adjusts the Arraylist text size."
-		}
-	}
+	ToolTip = "Contains persistent Taskium settings."
+})
+
+SettingsModule:CreateToggle({
+	Name = "Arraylist",
+	Function = function(Enabled)
+		if Enabled then
+			StartArraylist()
+		else
+			StopArraylist()
+		end
+	end,
+	ToolTip = "Displays enabled modules in the top-right corner."
+})
+
+SettingsModule:CreateSlider({
+	Name = "Text Size",
+	Min = 12,
+	Max = 30,
+	Default = 16,
+	Function = function(Value)
+		ArraylistTextSize = Value
+		ArraylistLayoutSignature = nil
+	end,
+	ToolTip = "Adjusts the Arraylist text size."
 })
 
 ArraylistToggle = SettingsModule.Toggles and SettingsModule.Toggles.Arraylist
@@ -1955,6 +2446,9 @@ local KillauraCurrentAnimationTween
 local KillauraBaseC0
 local KillauraAnimationToken = 0
 local KillauraAnimationBusy = false
+local KillauraHookState = RuntimeState.KillauraHitFix or {}
+
+RuntimeState.KillauraHitFix = KillauraHookState
 
 local KillauraAnimations = {
 	Normal = {
@@ -2649,22 +3143,6 @@ local function GetAttackRemote()
 	return nil
 end
 
-GetGroundHitRemote = function()
-	local BedwarsReference, RemoteTable = EnsureBedwarsRuntime()
-	if not (BedwarsReference and BedwarsReference.Client and RemoteTable and RemoteTable.GroundHit) then
-		return nil
-	end
-
-	local Success, RemoteInstance = pcall(function()
-		return BedwarsReference.Client:Get(RemoteTable.GroundHit).instance
-	end)
-	if not Success or not RemoteInstance then
-		return nil
-	end
-
-	return RemoteInstance
-end
-
 local function GetSwordData()
 	local Store = CreateTaskiumStore()
 	local BedwarsReference = EnsureBedwarsRuntime()
@@ -2900,6 +3378,7 @@ KillauraModule = TaskAPI.Categories.Combat:CreateModule({
 	Function = function(Enabled, RunId, Module)
 		local KillauraClient = nil
 		local AnimationActiveUntil = 0
+		local HookOwnerToken = "Killaura_" .. tostring(RunId) .. "_" .. tostring(math.floor(os.clock() * 1000))
 
 		local function StartKillauraAnimationLoop()
 			KillauraAnimationToken = KillauraAnimationToken + 1
@@ -2969,9 +3448,18 @@ KillauraModule = TaskAPI.Categories.Combat:CreateModule({
 		end
 
 		local function RemoveKillauraHitFixHook()
-			if KillauraOriginalClientGet and KillauraClient then
-				KillauraClient.Get = KillauraOriginalClientGet
+			if KillauraHookState.OwnerToken ~= HookOwnerToken then
+				return
 			end
+
+			if KillauraHookState.Client and KillauraHookState.WrappedGet and KillauraHookState.Client.Get == KillauraHookState.WrappedGet then
+				KillauraHookState.Client.Get = KillauraHookState.OriginalGet
+			end
+
+			KillauraHookState.Client = nil
+			KillauraHookState.OriginalGet = nil
+			KillauraHookState.WrappedGet = nil
+			KillauraHookState.OwnerToken = nil
 			KillauraOriginalClientGet = nil
 			KillauraClient = nil
 		end
@@ -2988,18 +3476,23 @@ KillauraModule = TaskAPI.Categories.Combat:CreateModule({
 
 			local Client = BedwarsReference.Client
 			if KillauraClient ~= Client then
-				RemoveKillauraHitFixHook()
+				if KillauraHookState.Client and KillauraHookState.Client ~= Client and KillauraHookState.WrappedGet and KillauraHookState.Client.Get == KillauraHookState.WrappedGet then
+					KillauraHookState.Client.Get = KillauraHookState.OriginalGet
+				end
 				KillauraClient = Client
 			end
 
-			if not KillauraOriginalClientGet then
-				KillauraOriginalClientGet = Client.Get
+			if KillauraHookState.Client ~= Client then
+				KillauraHookState.Client = Client
+				KillauraHookState.OriginalGet = Client.Get
 			end
 
-			local OriginalGet = KillauraOriginalClientGet
-			Client.Get = function(Self, RemoteName)
+			KillauraHookState.OwnerToken = HookOwnerToken
+			KillauraOriginalClientGet = KillauraHookState.OriginalGet
+			local OriginalGet = KillauraHookState.OriginalGet
+			local WrappedGet = function(Self, RemoteName)
 				local Call = OriginalGet(Self, RemoteName)
-				if not Module:IsActive(RunId) or not KillauraHitFixEnabled or RemoteName ~= RemoteTable.AttackEntity then
+				if KillauraHookState.OwnerToken ~= HookOwnerToken or not Module:IsActive(RunId) or not KillauraHitFixEnabled or RemoteName ~= RemoteTable.AttackEntity then
 					return Call
 				end
 
@@ -3030,6 +3523,8 @@ KillauraModule = TaskAPI.Categories.Combat:CreateModule({
 					end
 				})
 			end
+			KillauraHookState.WrappedGet = WrappedGet
+			Client.Get = WrappedGet
 		end
 
 		if not Enabled then
@@ -3167,87 +3662,89 @@ KillauraModule = TaskAPI.Categories.Combat:CreateModule({
 			until not Module:IsActive(RunId)
 		end)
 	end,
-	ToolTip = "Attack players around you without aiming at them.",
-	Sliders = {
-		{
-			Name = "Swing Range",
-			Min = 1,
-			Max = 22,
-			Default = 22,
-			Function = function(Value)
-				KillauraSwingRange = Value
-			end,
-			ToolTip = "How far Killaura can look for targets."
-		},
-		{
-			Name = "Attack Range",
-			Min = 1,
-			Max = 22,
-			Default = 22,
-			Function = function(Value)
-				KillauraAttackRange = Value
-			end,
-			ToolTip = "How far Killaura can hit targets."
-		},
-		{
-			Name = "Max Targets",
-			Min = 1,
-			Max = 5,
-			Default = 5,
-			Function = function(Value)
-				KillauraMaxTargets = Value
-			end,
-			ToolTip = "Maximum targets used in Multi mode."
-		},
-		{
-			Name = "Animation Speed",
-			Min = 1,
-			Max = 20,
-			Default = 10,
-			Function = function(Value)
-				KillauraAnimationSpeed = Value / 10
-			end,
-			ToolTip = "Changes how fast the custom sword animation plays."
-		}
-	},
-	Toggles = {
-		{
-			Name = "Custom Animation",
-			Function = function(Value)
-				KillauraAnimationEnabled = Value
-				if not Value then
-					KillauraAnimationBusy = false
-					ResetKillauraAnimation(0.1)
-				end
-			end,
-			ToolTip = "Plays a custom sword animation while Killaura is attacking."
-		},
-		{
-			Name = "HitFix",
-			Function = function(Value)
-				KillauraHitFixEnabled = Value
-			end,
-			ToolTip = "Uses the BedWars-style attack remote hook for better hit registration."
-		}
-	},
-	Dropdowns = {
-		{
-			Name = "Attack Mode",
-			List = { "Single", "Multi", "Switch" },
-			Function = function(Value)
-				KillauraAttackMode = Value
-			end,
-			ToolTip = "Single attacks one target, Multi attacks several, Switch rotates targets."
-		},
-		{
-			Name = "Animation Mode",
-			List = { "Normal", "Random", "Horizontal Spin", "Vertical Spin", "Exhibition", "Exhibition Old" },
-			Function = function(Value)
-				KillauraAnimationMode = Value
-			end,
-			ToolTip = "Changes the custom sword swing animation."
-		}
-	}
+	ToolTip = "Attack players around you without aiming at them."
+})
+
+KillauraModule:CreateSlider({
+	Name = "Swing Range",
+	Min = 1,
+	Max = 22,
+	Default = 22,
+	Function = function(Value)
+		KillauraSwingRange = Value
+	end,
+	ToolTip = "How far Killaura can look for targets."
+})
+
+KillauraModule:CreateSlider({
+	Name = "Attack Range",
+	Min = 1,
+	Max = 22,
+	Default = 22,
+	Function = function(Value)
+		KillauraAttackRange = Value
+	end,
+	ToolTip = "How far Killaura can hit targets."
+})
+
+KillauraModule:CreateSlider({
+	Name = "Max Targets",
+	Min = 1,
+	Max = 5,
+	Default = 5,
+	Function = function(Value)
+		KillauraMaxTargets = Value
+	end,
+	ToolTip = "Maximum targets used in Multi mode."
+})
+
+KillauraModule:CreateSlider({
+	Name = "Animation Speed",
+	Min = 1,
+	Max = 20,
+	Default = 10,
+	Function = function(Value)
+		KillauraAnimationSpeed = Value / 10
+	end,
+	ToolTip = "Changes how fast the custom sword animation plays."
+})
+
+KillauraModule:CreateToggle({
+	Name = "Custom Animation",
+	Function = function(Value)
+		KillauraAnimationEnabled = Value
+		if not Value then
+			KillauraAnimationBusy = false
+			ResetKillauraAnimation(0.1)
+		end
+	end,
+	ToolTip = "Plays a custom sword animation while Killaura is attacking."
+})
+
+KillauraModule:CreateToggle({
+	Name = "HitFix",
+	Function = function(Value)
+		KillauraHitFixEnabled = Value
+	end,
+	ToolTip = "Uses the BedWars-style attack remote hook for better hit registration."
+})
+
+KillauraModule:CreateDropdown({
+	Name = "Attack Mode",
+	List = { "Single", "Multi", "Switch" },
+	Function = function(Value)
+		KillauraAttackMode = Value
+	end,
+	ToolTip = "Single attacks one target, Multi attacks several, Switch rotates targets."
+})
+
+KillauraModule:CreateDropdown({
+	Name = "Animation Mode",
+	List = { "Normal", "Random", "Horizontal Spin", "Vertical Spin", "Exhibition", "Exhibition Old" },
+	Function = function(Value)
+		KillauraAnimationMode = Value
+	end,
+	ToolTip = "Changes the custom sword swing animation."
 })
 
 local BreakerModule
@@ -3386,101 +3883,109 @@ BreakerModule = TaskAPI.Categories.Other:CreateModule({
 			until not Module:IsActive(RunId)
 		end)
 	end,
-	ToolTip = "Breaks nearby BedWars blocks automatically.",
-	Sliders = {
-		{
-			Name = "Break Range",
-			Min = 1,
-			Max = 30,
-			Default = 30,
-			Function = function(Value)
-				BreakerRange = Value
-			end,
-			ToolTip = "How far Breaker can look for blocks."
-		},
-		{
-			Name = "Break Speed",
-			Min = 0,
-			Max = 30,
-			Default = 25,
-			Function = function(Value)
-				BreakerBreakSpeed = Value / 100
-			end,
-			ToolTip = "Delay between block break attempts."
-		},
-		{
-			Name = "Update Rate",
-			Min = 1,
-			Max = 120,
-			Default = 60,
-			Function = function(Value)
-				BreakerUpdateRate = Value
-			end,
-			ToolTip = "How often Breaker scans for blocks."
-		}
-	},
-	Toggles = {
-		{
-			Name = "Break Bed",
-			Default = true,
-			Function = function(Value)
-				BreakerBreakBed = Value
-			end
-		},
-		{
-			Name = "Break Tesla",
-			Default = true,
-			Function = function(Value)
-				BreakerBreakTesla = Value
-			end
-		},
-		{
-			Name = "Break Hive",
-			Default = true,
-			Function = function(Value)
-				BreakerBreakHive = Value
-			end
-		},
-		{
-			Name = "Break Lucky Block",
-			Default = true,
-			Function = function(Value)
-				BreakerBreakLuckyBlock = Value
-			end
-		},
-		{
-			Name = "Break Iron Ore",
-			Default = true,
-			Function = function(Value)
-				BreakerBreakIronOre = Value
-			end
-		},
-		{
-			Name = "Animation",
-			Function = function(Value)
-				BreakerAnimation = Value
-			end
-		},
-		{
-			Name = "Instant Break",
-			Function = function(Value)
-				BreakerInstantBreak = Value
-			end
-		},
-		{
-			Name = "Self Break",
-			Function = function(Value)
-				BreakerSelfBreak = Value
-			end
-		},
-		{
-			Name = "Show Effects",
-			Default = true,
-			Function = function(Value)
-				BreakerEffects = Value
-			end
-		}
-	}
+	ToolTip = "Breaks nearby BedWars blocks automatically."
+})
+
+BreakerModule:CreateSlider({
+	Name = "Break Range",
+	Min = 1,
+	Max = 30,
+	Default = 30,
+	Function = function(Value)
+		BreakerRange = Value
+	end,
+	ToolTip = "How far Breaker can look for blocks."
+})
+
+BreakerModule:CreateSlider({
+	Name = "Break Speed",
+	Min = 0,
+	Max = 30,
+	Default = 25,
+	Function = function(Value)
+		BreakerBreakSpeed = Value / 100
+	end,
+	ToolTip = "Delay between block break attempts."
+})
+
+BreakerModule:CreateSlider({
+	Name = "Update Rate",
+	Min = 1,
+	Max = 120,
+	Default = 60,
+	Function = function(Value)
+		BreakerUpdateRate = Value
+	end,
+	ToolTip = "How often Breaker scans for blocks."
+})
+
+BreakerModule:CreateToggle({
+	Name = "Break Bed",
+	Default = true,
+	Function = function(Value)
+		BreakerBreakBed = Value
+	end
+})
+
+BreakerModule:CreateToggle({
+	Name = "Break Tesla",
+	Default = true,
+	Function = function(Value)
+		BreakerBreakTesla = Value
+	end
+})
+
+BreakerModule:CreateToggle({
+	Name = "Break Hive",
+	Default = true,
+	Function = function(Value)
+		BreakerBreakHive = Value
+	end
+})
+
+BreakerModule:CreateToggle({
+	Name = "Break Lucky Block",
+	Default = true,
+	Function = function(Value)
+		BreakerBreakLuckyBlock = Value
+	end
+})
+
+BreakerModule:CreateToggle({
+	Name = "Break Iron Ore",
+	Default = true,
+	Function = function(Value)
+		BreakerBreakIronOre = Value
+	end
+})
+
+BreakerModule:CreateToggle({
+	Name = "Animation",
+	Function = function(Value)
+		BreakerAnimation = Value
+	end
+})
+
+BreakerModule:CreateToggle({
+	Name = "Instant Break",
+	Function = function(Value)
+		BreakerInstantBreak = Value
+	end
+})
+
+BreakerModule:CreateToggle({
+	Name = "Self Break",
+	Function = function(Value)
+		BreakerSelfBreak = Value
+	end
+})
+
+BreakerModule:CreateToggle({
+	Name = "Show Effects",
+	Default = true,
+	Function = function(Value)
+		BreakerEffects = Value
+	end
 })
 
 local VelocityModule
@@ -3488,13 +3993,15 @@ local HorizontalStrength = 0
 local VerticalStrength = 0
 local Chance = 100
 local rand = Random.new()
-local old = nil
 local KnockbackUtil = nil
+local VelocityHookState = RuntimeState.VelocityHook or {}
+
+RuntimeState.VelocityHook = VelocityHookState
 
 VelocityModule = TaskAPI.Categories.Combat:CreateModule({
 	Name = "Velocity",
 	Function = function(Enabled, RunId, Module)
-		print(Enabled, "Velocity module state")
+		local HookOwnerToken = "Velocity_" .. tostring(RunId) .. "_" .. tostring(math.floor(os.clock() * 1000))
 
 		if not KnockbackUtil then
 			local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -3503,7 +4010,6 @@ VelocityModule = TaskAPI.Categories.Combat:CreateModule({
 			end)
 			if ok and result then
 				KnockbackUtil = result
-				print("KnockbackUtil loaded:", tostring(KnockbackUtil))
 			else
 				warn("KnockbackUtil failed to load:", tostring(result))
 				return
@@ -3511,14 +4017,23 @@ VelocityModule = TaskAPI.Categories.Combat:CreateModule({
 		end
 
 		if Enabled then
-			old = KnockbackUtil.applyKnockback
-			KnockbackUtil.applyKnockback = function(root, mass, dir, knockback, ...)
-				if not Module:IsActive(RunId) then
-					return old(root, mass, dir, knockback, ...)
+			if VelocityHookState.Util ~= KnockbackUtil then
+				if VelocityHookState.Util and VelocityHookState.WrappedApplyKnockback and VelocityHookState.Util.applyKnockback == VelocityHookState.WrappedApplyKnockback then
+					VelocityHookState.Util.applyKnockback = VelocityHookState.OriginalApplyKnockback
+				end
+				VelocityHookState.Util = KnockbackUtil
+				VelocityHookState.OriginalApplyKnockback = KnockbackUtil.applyKnockback
+			end
+
+			VelocityHookState.OwnerToken = HookOwnerToken
+			local OriginalApplyKnockback = VelocityHookState.OriginalApplyKnockback
+			local WrappedApplyKnockback = function(root, mass, dir, knockback, ...)
+				if VelocityHookState.OwnerToken ~= HookOwnerToken or not Module:IsActive(RunId) then
+					return OriginalApplyKnockback(root, mass, dir, knockback, ...)
 				end
 
 				if rand:NextNumber(0, 100) > Chance then
-					return old(root, mass, dir, knockback, ...)
+					return OriginalApplyKnockback(root, mass, dir, knockback, ...)
 				end
 
 				if HorizontalStrength == 0 and VerticalStrength == 0 then
@@ -3529,50 +4044,53 @@ VelocityModule = TaskAPI.Categories.Combat:CreateModule({
 				knockback.horizontal = (knockback.horizontal or 1) * (HorizontalStrength / 100)
 				knockback.vertical = (knockback.vertical or 1) * (VerticalStrength / 100)
 
-				return old(root, mass, dir, knockback, ...)
+				return OriginalApplyKnockback(root, mass, dir, knockback, ...)
 			end
+
+			VelocityHookState.WrappedApplyKnockback = WrappedApplyKnockback
+			KnockbackUtil.applyKnockback = WrappedApplyKnockback
 		else
-			if old and KnockbackUtil then
-				KnockbackUtil.applyKnockback = old
-				old = nil
+			if VelocityHookState.OwnerToken == HookOwnerToken and KnockbackUtil and VelocityHookState.WrappedApplyKnockback and KnockbackUtil.applyKnockback == VelocityHookState.WrappedApplyKnockback then
+				KnockbackUtil.applyKnockback = VelocityHookState.OriginalApplyKnockback
+				VelocityHookState.OwnerToken = nil
+				VelocityHookState.WrappedApplyKnockback = nil
 			end
 		end
 	end,
-	ToolTip = "Reduces knockback taken.",
-	Toggles = {},
-	Sliders = {
-		{
-			Name = "Horizontal",
-			Min = 0,
-			Max = 100,
-			Default = 0,
-			Function = function(Value)
-				HorizontalStrength = Value
-			end,
-			ToolTip = "0 = no horizontal KB, 100 = full."
-		},
-		{
-			Name = "Vertical",
-			Min = 0,
-			Max = 100,
-			Default = 0,
-			Function = function(Value)
-				VerticalStrength = Value
-			end,
-			ToolTip = "0 = no vertical KB, 100 = full."
-		},
-		{
-			Name = "Chance",
-			Min = 0,
-			Max = 100,
-			Default = 100,
-			Function = function(Value)
-				Chance = Value
-			end,
-			ToolTip = "% chance to block KB. 100 = always."
-		}
-	},
-	Dropdowns = {}
+	ToolTip = "Reduces knockback taken."
+})
+
+VelocityModule:CreateSlider({
+	Name = "Horizontal",
+	Min = 0,
+	Max = 100,
+	Default = 0,
+	Function = function(Value)
+		HorizontalStrength = Value
+	end,
+	ToolTip = "0 = no horizontal KB, 100 = full."
+})
+
+VelocityModule:CreateSlider({
+	Name = "Vertical",
+	Min = 0,
+	Max = 100,
+	Default = 0,
+	Function = function(Value)
+		VerticalStrength = Value
+	end,
+	ToolTip = "0 = no vertical KB, 100 = full."
+})
+
+VelocityModule:CreateSlider({
+	Name = "Chance",
+	Min = 0,
+	Max = 100,
+	Default = 100,
+	Function = function(Value)
+		Chance = Value
+	end,
+	ToolTip = "% chance to block KB. 100 = always."
 })
 
 return TaskAPI

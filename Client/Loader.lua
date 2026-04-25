@@ -2,6 +2,7 @@ local HttpService = game:GetService("HttpService")
 
 local RawRepositoryUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/"
 local RepositoryContentsApiUrl = "https://api.github.com/repos/OliusSchool/Taskium/contents/"
+local ClientLoaderUrl = RawRepositoryUrl .. "Client/Loader.lua"
 
 local WorkspaceRootFolder = "Taskium"
 local WorkspaceBaseFolder = WorkspaceRootFolder .. "/Client/Base"
@@ -28,6 +29,46 @@ local RequiredFolderPaths = {
 	"Taskium/GUI",
 	"Taskium/Scripts"
 }
+
+local function GetQueueOnTeleportFunction()
+	if type(queue_on_teleport) == "function" then
+		return queue_on_teleport
+	end
+
+	if type(queueonteleport) == "function" then
+		return queueonteleport
+	end
+
+	if syn and type(syn.queue_on_teleport) == "function" then
+		return syn.queue_on_teleport
+	end
+
+	if fluxus and type(fluxus.queue_on_teleport) == "function" then
+		return fluxus.queue_on_teleport
+	end
+
+	return nil
+end
+
+local function BuildTeleportQueueSource()
+	return string.format(
+		"loadstring(game:HttpGet(%q, true), %q)()",
+		ClientLoaderUrl,
+		"@Client/Loader.lua"
+	)
+end
+
+local function QueueTaskiumOnTeleport()
+	local QueueOnTeleport = GetQueueOnTeleportFunction()
+	if not QueueOnTeleport then
+		Taskium.TeleportQueueArmed = false
+		return false
+	end
+
+	local QueueSucceeded = pcall(QueueOnTeleport, BuildTeleportQueueSource())
+	Taskium.TeleportQueueArmed = QueueSucceeded
+	return QueueSucceeded
+end
 
 local function SendHttpRequest(RequestUrl)
 	local HttpResponse
@@ -529,8 +570,10 @@ end
 Taskium.SyncTaskiumFiles = SyncTaskiumFiles
 Taskium.ExecuteFile = ExecuteWorkspaceFile
 Taskium.RestartTaskium = RestartTaskium
+Taskium.QueueTaskiumOnTeleport = QueueTaskiumOnTeleport
 Taskium.LastSyncReport = nil
 
+QueueTaskiumOnTeleport()
 LoadSyncState()
 
 local InitialSyncReport = SyncTaskiumFiles(false)

@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local InputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 
@@ -39,6 +40,9 @@ getgenv().TaskAPI = TaskAPI
 local TaskConfig = getgenv().Taskium and getgenv().Taskium.Config
 TaskAPI.Config = TaskConfig
 local ActiveKeybindModule = nil
+local ActiveSlider = nil
+local ActiveCategoryDrag = nil
+local AnimatedModules = {}
 
 local function IsFlyMovementKeyCode(KeyCode)
 	return KeyCode == Enum.KeyCode.Space
@@ -110,6 +114,30 @@ local function SetConfigValue(Kind, Key, Value)
 	end
 
 	return Value
+end
+
+local function NotifyTaskError(Kind, Name, ErrorMessage, Suffix)
+	local DisplaySuffix = Suffix and (" " .. Suffix) or ""
+	warn(("TaskAPI %s '%s'%s failed: %s"):format(Kind, tostring(Name), DisplaySuffix, tostring(ErrorMessage)))
+	TaskAPI.Notification({
+		Title = "Taskium",
+		Message = tostring(ErrorMessage),
+		Duration = 4,
+		Type = "Error"
+	})
+end
+
+local function InvokeTaskCallback(Kind, Name, Callback, ...)
+	if type(Callback) ~= "function" then
+		return true
+	end
+
+	local Success, Result = pcall(Callback, ...)
+	if not Success then
+		NotifyTaskError(Kind, Name, Result)
+	end
+
+	return Success, Result
 end
 
 local function GetClipboardSetter()
@@ -230,6 +258,23 @@ TaskAPI.BlurEffect = BlurEffect
 TaskAPI.NotificationGui = NotificationGui
 TaskAPI.NotificationsContainer = NotificationsContainer
 TaskAPI.Connections = {}
+
+local function TrackTaskConnection(Connection)
+	table.insert(TaskAPI.Connections, Connection)
+	return Connection
+end
+
+local function SetModuleAnimated(Module, State)
+	if Module == nil then
+		return
+	end
+
+	if State then
+		AnimatedModules[Module] = true
+	else
+		AnimatedModules[Module] = nil
+	end
+end
 
 local ToolTipFrame = Instance.new("Frame")
 ToolTipFrame.Name = "ModuleToolTip"
@@ -367,7 +412,10 @@ end
 local function UpdateShadowSize(Category)
 	local WidthOffset = Category.MainFrame.Size.X.Offset
 	local HeightOffset = Category.MainFrame.Size.Y.Offset
+	local ShadowPaddingX = 13
+	local ShadowPaddingY = 11
 
+	Category.ShadowEffect.Position = UDim2.new(0, -ShadowPaddingX, 0, -ShadowPaddingY)
 	Category.ShadowEffect.Size = UDim2.new(0, WidthOffset + 25, 0, HeightOffset + 23)
 	Category.ContainerFrame.Size = Category.MainFrame.Size
 end
@@ -420,6 +468,16 @@ local function UpdateModuleLayout(Module, Animate)
 
 	Module.ArrowButton.Visible = (#Module.ToggleList + #Module.SliderList + #Module.DropdownList) > 0
 	Module.ArrowButton.Text = Module.Expanded and "v" or ">"
+end
+
+local function ApplyArraylistGradient(Gradient, Rotation)
+	Gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0.00, Color3.fromRGB(158, 158, 158)),
+		ColorSequenceKeypoint.new(0.33, Color3.fromRGB(238, 238, 238)),
+		ColorSequenceKeypoint.new(0.66, Color3.fromRGB(82, 82, 82)),
+		ColorSequenceKeypoint.new(1.00, Color3.fromRGB(158, 158, 158))
+	})
+	Gradient.Rotation = Rotation or 0
 end
 
 local function NormalizeNotificationData(Title, Message, Duration, NotificationType)
@@ -578,12 +636,27 @@ local function UpdateCategorySize(Category)
 	UpdateShadowSize(Category)
 end
 
+local function UpdateModuleHighlight(Module, CurrentTime)
+	if Module == nil or Module.Highlight == nil or Module.HighlightGradient == nil then
+		return
+	end
+
+	Module.Highlight.Visible = Module.Enabled
+	if Module.Enabled then
+		Module.HighlightGradient.Offset = Vector2.new((CurrentTime * 1.1) % 2 - 1, 0)
+	else
+		Module.HighlightGradient.Offset = Vector2.new(0, 0)
+	end
+end
+
 local function RefreshModuleDisplay(Module)
 	if Module.Button == nil or Module.Button.Parent == nil then
 		return
 	end
 
-	Module.Button.BackgroundColor3 = Module.Enabled and Color3.fromRGB(36, 36, 36) or Color3.fromRGB(17, 17, 17)
+	Module.Button.BackgroundColor3 = Module.Enabled and Color3.fromRGB(12, 12, 12) or Color3.fromRGB(17, 17, 17)
+	SetModuleAnimated(Module, Module.Enabled)
+	UpdateModuleHighlight(Module, time())
 	Module.NameLabel.TextColor3 = Module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 205)
 	Module.ArrowButton.TextColor3 = Module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
 	Module.NameLabel.Text = Module.Name
@@ -755,6 +828,21 @@ function TaskAPI:CreateCategory(CategoryData)
 		ModuleButton.ZIndex = 4
 		ModuleButton.Parent = ModuleContainer
 
+		local ModuleHighlight = Instance.new("Frame")
+		ModuleHighlight.Name = "EnabledGradient"
+		ModuleHighlight.Size = UDim2.new(1, 0, 1, 0)
+		ModuleHighlight.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		ModuleHighlight.BackgroundTransparency = 0.35
+		ModuleHighlight.BorderSizePixel = 0
+		ModuleHighlight.Visible = false
+		ModuleHighlight.ZIndex = 4
+		ModuleHighlight.Parent = ModuleButton
+
+		local ModuleHighlightGradient = Instance.new("UIGradient")
+		ApplyArraylistGradient(ModuleHighlightGradient, 0)
+		ModuleHighlightGradient.Offset = Vector2.new(0, 0)
+		ModuleHighlightGradient.Parent = ModuleHighlight
+
 		local NameLabel = Instance.new("TextLabel")
 		NameLabel.Name = "ModuleName"
 		NameLabel.Size = UDim2.new(1, -92, 1, 0)
@@ -825,6 +913,8 @@ function TaskAPI:CreateCategory(CategoryData)
 			ToolTip = ModuleData.ToolTip or ModuleData.Tooltip,
 			Container = ModuleContainer,
 			Button = ModuleButton,
+			Highlight = ModuleHighlight,
+			HighlightGradient = ModuleHighlightGradient,
 			NameLabel = NameLabel,
 			KeybindButton = KeybindButton,
 			ArrowButton = ArrowButton,
@@ -901,31 +991,18 @@ function TaskAPI:CreateCategory(CategoryData)
 			if self.Function then
 				if self.Enabled then
 					task.spawn(function()
-						local ok, err = pcall(self.Function, true, currentRunId, self)
+						local ok, err = InvokeTaskCallback("Module", self.Name, self.Function, true, currentRunId, self)
 						if not ok then
-							warn(("TaskAPI Module '%s' failed: %s"):format(self.Name, tostring(err)))
 							self.Enabled = false
 							RefreshModuleDisplay(self)
 							SetConfigValue("Module", self.ConfigKey, false)
 							self:Cleanup()
-							TaskAPI.Notification({
-								Title = "Taskium",
-								Message = tostring(err),
-								Duration = 4,
-								Type = "Error"
-							})
 						end
 					end)
 				else
 					local ok, err = pcall(self.Function, false, currentRunId, self)
 					if not ok then
-						warn(("TaskAPI Module '%s' disable failed: %s"):format(self.Name, tostring(err)))
-						TaskAPI.Notification({
-							Title = "Taskium",
-							Message = tostring(err),
-							Duration = 4,
-							Type = "Error"
-						})
+						NotifyTaskError("Module", self.Name, err, "disable")
 					end
 				end
 			end
@@ -1029,11 +1106,11 @@ function TaskAPI:CreateCategory(CategoryData)
 			ToggleNameLabel.Position = UDim2.new(0, 18, 0, 0)
 			ToggleNameLabel.BackgroundTransparency = 1
 			ToggleNameLabel.Text = ToggleData.Name
-			ToggleNameLabel.TextSize = 14
+			ToggleNameLabel.TextSize = 10
 			ToggleNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
 			ToggleNameLabel.TextXAlignment = Enum.TextXAlignment.Left
 			ToggleNameLabel.TextYAlignment = Enum.TextYAlignment.Center
-			ToggleNameLabel.Font = Enum.Font.Gotham
+			ToggleNameLabel.Font = Enum.Font.GothamBold
 			ToggleNameLabel.ZIndex = 5
 			ToggleNameLabel.Parent = ToggleButton
 
@@ -1044,19 +1121,21 @@ function TaskAPI:CreateCategory(CategoryData)
 			ToggleStateLabel.Position = UDim2.new(1, -8, 0, 0)
 			ToggleStateLabel.BackgroundTransparency = 1
 			ToggleStateLabel.Text = "Off"
-			ToggleStateLabel.TextSize = 13
+			ToggleStateLabel.TextSize = 9
 			ToggleStateLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
 			ToggleStateLabel.TextXAlignment = Enum.TextXAlignment.Right
 			ToggleStateLabel.TextYAlignment = Enum.TextYAlignment.Center
-			ToggleStateLabel.Font = Enum.Font.Gotham
+			ToggleStateLabel.Font = Enum.Font.GothamBold
 			ToggleStateLabel.ZIndex = 5
 			ToggleStateLabel.Parent = ToggleButton
+
+			local DefaultValue = not not ToggleData.Default
 
 			local Toggle = {
 				Name = ToggleData.Name,
 				ConfigKey = BuildConfigKey(self.ConfigKey, ToggleData.Name),
 				Enabled = false,
-				Value = false,
+				Value = DefaultValue,
 				Active = false,
 				Function = ToggleData.Function,
 				ToolTip = ToggleData.ToolTip or ToggleData.Tooltip,
@@ -1083,16 +1162,7 @@ function TaskAPI:CreateCategory(CategoryData)
 				end
 
 				self.Active = shouldRun
-				local ok, err = pcall(self.Function, shouldRun)
-				if not ok then
-					warn(("TaskAPI Toggle '%s' failed: %s"):format(self.Name, tostring(err)))
-					TaskAPI.Notification({
-						Title = "Taskium",
-						Message = tostring(err),
-						Duration = 4,
-						Type = "Error"
-					})
-				end
+				InvokeTaskCallback("Toggle", self.Name, self.Function, shouldRun)
 			end
 
 			function Toggle:SetEnabled(state, options)
@@ -1139,7 +1209,7 @@ function TaskAPI:CreateCategory(CategoryData)
 			UpdateModuleLayout(self)
 			UpdateCategorySize(self.Category)
 			RefreshModuleDisplay(self)
-			Toggle.Value = RegisterConfigValue("Toggle", Toggle.ConfigKey, false)
+			Toggle.Value = RegisterConfigValue("Toggle", Toggle.ConfigKey, DefaultValue)
 			Toggle.Enabled = false
 			Toggle.Active = false
 			RefreshToggleDisplay(Toggle)
@@ -1186,28 +1256,50 @@ function TaskAPI:CreateCategory(CategoryData)
 			SliderNameLabel.Position = UDim2.new(0, 18, 0, 5)
 			SliderNameLabel.BackgroundTransparency = 1
 			SliderNameLabel.Text = SliderData.Name
-			SliderNameLabel.TextSize = 14
+			SliderNameLabel.TextSize = 10
 			SliderNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
 			SliderNameLabel.TextXAlignment = Enum.TextXAlignment.Left
 			SliderNameLabel.TextYAlignment = Enum.TextYAlignment.Center
-			SliderNameLabel.Font = Enum.Font.Gotham
+			SliderNameLabel.Font = Enum.Font.GothamBold
 			SliderNameLabel.ZIndex = 5
 			SliderNameLabel.Parent = SliderButton
 
-			local SliderValueLabel = Instance.new("TextLabel")
+			local SliderValueLabel = Instance.new("TextButton")
 			SliderValueLabel.Name = "SliderValue"
 			SliderValueLabel.Size = UDim2.new(0, 50, 0, 18)
 			SliderValueLabel.AnchorPoint = Vector2.new(1, 0)
 			SliderValueLabel.Position = UDim2.new(1, -8, 0, 5)
 			SliderValueLabel.BackgroundTransparency = 1
+			SliderValueLabel.BorderSizePixel = 0
+			SliderValueLabel.AutoButtonColor = false
 			SliderValueLabel.Text = tostring(DefaultValue)
-			SliderValueLabel.TextSize = 13
+			SliderValueLabel.TextSize = 9
 			SliderValueLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
 			SliderValueLabel.TextXAlignment = Enum.TextXAlignment.Right
 			SliderValueLabel.TextYAlignment = Enum.TextYAlignment.Center
-			SliderValueLabel.Font = Enum.Font.Gotham
+			SliderValueLabel.Font = Enum.Font.GothamBold
 			SliderValueLabel.ZIndex = 5
 			SliderValueLabel.Parent = SliderButton
+
+			local SliderValueInput = Instance.new("TextBox")
+			SliderValueInput.Name = "SliderValueInput"
+			SliderValueInput.Size = SliderValueLabel.Size
+			SliderValueInput.AnchorPoint = SliderValueLabel.AnchorPoint
+			SliderValueInput.Position = SliderValueLabel.Position
+			SliderValueInput.BackgroundTransparency = 1
+			SliderValueInput.BorderSizePixel = 0
+			SliderValueInput.ClearTextOnFocus = false
+			SliderValueInput.MultiLine = false
+			SliderValueInput.Visible = false
+			SliderValueInput.Text = tostring(DefaultValue)
+			SliderValueInput.PlaceholderText = tostring(DefaultValue)
+			SliderValueInput.TextSize = 9
+			SliderValueInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+			SliderValueInput.TextXAlignment = Enum.TextXAlignment.Right
+			SliderValueInput.TextYAlignment = Enum.TextYAlignment.Center
+			SliderValueInput.Font = Enum.Font.GothamBold
+			SliderValueInput.ZIndex = 6
+			SliderValueInput.Parent = SliderButton
 
 			local SliderTrack = Instance.new("Frame")
 			SliderTrack.Name = "SliderTrack"
@@ -1247,44 +1339,59 @@ function TaskAPI:CreateCategory(CategoryData)
 				Max = MaxValue,
 				Value = DefaultValue,
 				Function = SliderData.Function,
+				Suffix = SliderData.Suffix,
 				ToolTip = SliderData.ToolTip or SliderData.Tooltip,
 				Button = SliderButton,
 				NameLabel = SliderNameLabel,
 				ValueLabel = SliderValueLabel,
+				ValueInput = SliderValueInput,
 				Track = SliderTrack,
 				Fill = SliderFill,
 				Knob = SliderKnob,
 				Module = self,
-				ControlHeight = 46
+				ControlHeight = 46,
+				EditingValue = false,
+				ApplyMousePosition = nil
 			}
+
+			local function GetSliderValueText(value)
+				if type(Slider.Suffix) == "function" then
+					local ok, suffixValue = pcall(Slider.Suffix, value)
+					if ok and suffixValue ~= nil and tostring(suffixValue) ~= "" then
+						return ("%s %s"):format(tostring(value), tostring(suffixValue))
+					end
+				elseif Slider.Suffix ~= nil and tostring(Slider.Suffix) ~= "" then
+					return ("%s %s"):format(tostring(value), tostring(Slider.Suffix))
+				end
+
+				return tostring(value)
+			end
 
 			local function SetSliderVisuals(value)
 				local Alpha = 0
 				if Slider.Max > Slider.Min then
-					Alpha = (value - Slider.Min) / (Slider.Max - Slider.Min)
+					Alpha = math.clamp((value - Slider.Min) / (Slider.Max - Slider.Min), 0, 1)
 				end
 
-				Slider.ValueLabel.Text = tostring(value)
+				Slider.ValueLabel.Text = GetSliderValueText(value)
+				Slider.ValueInput.Text = tostring(value)
+				Slider.ValueInput.PlaceholderText = tostring(value)
 				Slider.Fill.Size = UDim2.new(Alpha, 0, 1, 0)
 				Slider.Knob.Position = UDim2.new(Alpha, 0, 0.5, 0)
 			end
 
 			function Slider:SetValue(value, skipCallback, options)
 				options = options or {}
-				value = math.clamp(math.floor((tonumber(value) or self.Value) + 0.5), self.Min, self.Max)
+				value = math.floor((tonumber(value) or self.Value) + 0.5)
+				if options.AllowOverflow then
+					value = math.max(value, self.Min)
+				else
+					value = math.clamp(value, self.Min, self.Max)
+				end
 				if self.Value == value then
 					SetSliderVisuals(value)
 					if not skipCallback and options.ForceCallback and self.Function then
-						local ok, err = pcall(self.Function, self.Value)
-						if not ok then
-							warn(("TaskAPI Slider '%s' failed: %s"):format(self.Name, tostring(err)))
-							TaskAPI.Notification({
-								Title = "Taskium",
-								Message = tostring(err),
-								Duration = 4,
-								Type = "Error"
-							})
-						end
+						InvokeTaskCallback("Slider", self.Name, self.Function, self.Value)
 					end
 					return
 				end
@@ -1297,20 +1404,9 @@ function TaskAPI:CreateCategory(CategoryData)
 				end
 
 				if not skipCallback and self.Function then
-					local ok, err = pcall(self.Function, self.Value)
-					if not ok then
-						warn(("TaskAPI Slider '%s' failed: %s"):format(self.Name, tostring(err)))
-						TaskAPI.Notification({
-							Title = "Taskium",
-							Message = tostring(err),
-							Duration = 4,
-							Type = "Error"
-						})
-					end
+					InvokeTaskCallback("Slider", self.Name, self.Function, self.Value)
 				end
 			end
-
-			local DraggingSlider = false
 
 			local function SetFromMousePosition(mouseX)
 				local Alpha = math.clamp((mouseX - Slider.Track.AbsolutePosition.X) / Slider.Track.AbsoluteSize.X, 0, 1)
@@ -1318,9 +1414,73 @@ function TaskAPI:CreateCategory(CategoryData)
 				Slider:SetValue(value)
 			end
 
+			local function EndValueEdit(shouldApply)
+				if not Slider.EditingValue then
+					return
+				end
+
+				Slider.EditingValue = false
+
+				if shouldApply then
+					local enteredValue = tonumber(Slider.ValueInput.Text)
+					if enteredValue ~= nil then
+						Slider:SetValue(enteredValue, false, {
+							AllowOverflow = true
+						})
+					else
+						SetSliderVisuals(Slider.Value)
+					end
+				else
+					SetSliderVisuals(Slider.Value)
+				end
+
+				Slider.ValueInput.Visible = false
+				Slider.ValueLabel.Visible = true
+			end
+
+			local function SubmitValueEdit()
+				if not Slider.EditingValue then
+					return
+				end
+
+				EndValueEdit(true)
+			end
+
+			local function BeginValueEdit()
+				ActiveSlider = nil
+				Slider.EditingValue = true
+				Slider.ValueInput.Text = tostring(Slider.Value)
+				Slider.ValueInput.PlaceholderText = tostring(Slider.Value)
+				Slider.ValueLabel.Visible = false
+				Slider.ValueInput.Visible = true
+				Slider.ValueInput:CaptureFocus()
+				Slider.ValueInput.CursorPosition = #Slider.ValueInput.Text + 1
+			end
+
 			SliderButton.MouseButton1Down:Connect(function(mouseX)
-				DraggingSlider = true
+				if Slider.EditingValue then
+					return
+				end
+				ActiveSlider = Slider
 				SetFromMousePosition(mouseX)
+			end)
+
+			SliderValueLabel.MouseButton1Click:Connect(function()
+				BeginValueEdit()
+			end)
+
+			SliderValueInput.InputBegan:Connect(function(InputObject)
+				if InputObject.UserInputType ~= Enum.UserInputType.Keyboard then
+					return
+				end
+
+				if InputObject.KeyCode == Enum.KeyCode.Return or InputObject.KeyCode == Enum.KeyCode.KeypadEnter then
+					SubmitValueEdit()
+					Slider.ValueInput:ReleaseFocus()
+				elseif InputObject.KeyCode == Enum.KeyCode.Escape then
+					EndValueEdit(false)
+					Slider.ValueInput:ReleaseFocus()
+				end
 			end)
 
 			SliderButton.MouseEnter:Connect(function()
@@ -1331,17 +1491,11 @@ function TaskAPI:CreateCategory(CategoryData)
 				HideToolTip()
 			end)
 
-			InputService.InputChanged:Connect(function(Input)
-				if DraggingSlider and Input.UserInputType == Enum.UserInputType.MouseMovement then
-					SetFromMousePosition(Input.Position.X)
-				end
+			SliderValueInput.FocusLost:Connect(function(enterPressed)
+				EndValueEdit(enterPressed or Slider.ValueInput.Text ~= tostring(Slider.Value))
 			end)
 
-			InputService.InputEnded:Connect(function(Input)
-				if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-					DraggingSlider = false
-				end
-			end)
+			Slider.ApplyMousePosition = SetFromMousePosition
 
 			table.insert(self.SliderList, Slider)
 			self.Sliders[Slider.Name] = Slider
@@ -1349,7 +1503,8 @@ function TaskAPI:CreateCategory(CategoryData)
 			UpdateCategorySize(self.Category)
 			Slider:SetValue(RegisterConfigValue("Slider", Slider.ConfigKey, DefaultValue), false, {
 				SkipConfig = true,
-				ForceCallback = true
+				ForceCallback = true,
+				AllowOverflow = true
 			})
 
 			return Slider
@@ -1396,11 +1551,11 @@ function TaskAPI:CreateCategory(CategoryData)
 			DropdownNameLabel.Position = UDim2.new(0, 18, 0, 0)
 			DropdownNameLabel.BackgroundTransparency = 1
 			DropdownNameLabel.Text = DropdownData.Name
-			DropdownNameLabel.TextSize = 14
+			DropdownNameLabel.TextSize = 10
 			DropdownNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
 			DropdownNameLabel.TextXAlignment = Enum.TextXAlignment.Left
 			DropdownNameLabel.TextYAlignment = Enum.TextYAlignment.Center
-			DropdownNameLabel.Font = Enum.Font.Gotham
+			DropdownNameLabel.Font = Enum.Font.GothamBold
 			DropdownNameLabel.ZIndex = 5
 			DropdownNameLabel.Parent = DropdownButton
 
@@ -1411,11 +1566,11 @@ function TaskAPI:CreateCategory(CategoryData)
 			DropdownValueLabel.Position = UDim2.new(1, -24, 0, 0)
 			DropdownValueLabel.BackgroundTransparency = 1
 			DropdownValueLabel.Text = ""
-			DropdownValueLabel.TextSize = 13
+			DropdownValueLabel.TextSize = 9
 			DropdownValueLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
 			DropdownValueLabel.TextXAlignment = Enum.TextXAlignment.Right
 			DropdownValueLabel.TextYAlignment = Enum.TextYAlignment.Center
-			DropdownValueLabel.Font = Enum.Font.Gotham
+			DropdownValueLabel.Font = Enum.Font.GothamBold
 			DropdownValueLabel.ZIndex = 5
 			DropdownValueLabel.Parent = DropdownButton
 
@@ -1427,7 +1582,7 @@ function TaskAPI:CreateCategory(CategoryData)
 			DropdownArrow.BackgroundTransparency = 1
 			DropdownArrow.AutoButtonColor = false
 			DropdownArrow.Text = ">"
-			DropdownArrow.TextSize = 14
+			DropdownArrow.TextSize = 10
 			DropdownArrow.TextColor3 = Color3.fromRGB(170, 170, 170)
 			DropdownArrow.Font = Enum.Font.GothamBold
 			DropdownArrow.ZIndex = 6
@@ -1530,16 +1685,7 @@ function TaskAPI:CreateCategory(CategoryData)
 				if self.Value == matchedValue then
 					UpdateDropdownDisplay(false)
 					if not skipCallback and options.ForceCallback and self.Function then
-						local ok, err = pcall(self.Function, self.Value)
-						if not ok then
-							warn(("TaskAPI Dropdown '%s' failed: %s"):format(self.Name, tostring(err)))
-							TaskAPI.Notification({
-								Title = "Taskium",
-								Message = tostring(err),
-								Duration = 4,
-								Type = "Error"
-							})
-						end
+						InvokeTaskCallback("Dropdown", self.Name, self.Function, self.Value)
 					end
 					return
 				end
@@ -1552,16 +1698,7 @@ function TaskAPI:CreateCategory(CategoryData)
 				end
 
 				if not skipCallback and self.Function then
-					local ok, err = pcall(self.Function, self.Value)
-					if not ok then
-						warn(("TaskAPI Dropdown '%s' failed: %s"):format(self.Name, tostring(err)))
-						TaskAPI.Notification({
-							Title = "Taskium",
-							Message = tostring(err),
-							Duration = 4,
-							Type = "Error"
-						})
-					end
+					InvokeTaskCallback("Dropdown", self.Name, self.Function, self.Value)
 				end
 			end
 
@@ -1584,11 +1721,11 @@ function TaskAPI:CreateCategory(CategoryData)
 				OptionLabel.Position = UDim2.new(0, 18, 0, 0)
 				OptionLabel.BackgroundTransparency = 1
 				OptionLabel.Text = OptionValue
-				OptionLabel.TextSize = 13
+				OptionLabel.TextSize = 9
 				OptionLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
 				OptionLabel.TextXAlignment = Enum.TextXAlignment.Left
 				OptionLabel.TextYAlignment = Enum.TextYAlignment.Center
-				OptionLabel.Font = Enum.Font.Gotham
+				OptionLabel.Font = Enum.Font.GothamBold
 				OptionLabel.ZIndex = 6
 				OptionLabel.Parent = OptionButton
 
@@ -1682,13 +1819,6 @@ function TaskAPI:CreateCategory(CategoryData)
 			Module:SetExpanded(not Module.Expanded)
 		end)
 
-		task.spawn(function()
-			while ModuleButton.Parent do
-				RefreshModuleDisplay(Module)
-				task.wait(0.15)
-			end
-		end)
-
 		table.insert(self.ModuleList, Module)
 		self.Modules[Module.Name] = Module
 		TaskAPI.Modules[Module.Name] = Module
@@ -1716,41 +1846,18 @@ function TaskAPI:CreateCategory(CategoryData)
 		return Module
 	end
 
-	local Dragging = false
-	local DragStart
-	local StartPosition
+		CategoryFrame.InputBegan:Connect(function(Input)
+			if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+				return
+			end
 
-	CategoryFrame.InputBegan:Connect(function(Input)
-		if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-			return
-		end
-
-		Dragging = true
-		DragStart = Input.Position
-		StartPosition = ContainerFrame.Position
-	end)
-
-	CategoryFrame.InputEnded:Connect(function(Input)
-		if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-			Dragging = false
-			Category.Position = ContainerFrame.Position
-		end
-	end)
-
-	InputService.InputChanged:Connect(function(Input)
-		if not Dragging or Input.UserInputType ~= Enum.UserInputType.MouseMovement then
-			return
-		end
-
-		local Delta = Input.Position - DragStart
-		ContainerFrame.Position = UDim2.new(
-			StartPosition.X.Scale,
-			StartPosition.X.Offset + Delta.X,
-			StartPosition.Y.Scale,
-			StartPosition.Y.Offset + Delta.Y
-		)
-		Category.Position = ContainerFrame.Position
-	end)
+			ActiveCategoryDrag = {
+				Category = Category,
+				ContainerFrame = ContainerFrame,
+				DragStart = Input.Position,
+				StartPosition = ContainerFrame.Position
+			}
+		end)
 
 	self.Categories[Category.Name] = Category
 	table.insert(self.CategoryList, Category)
@@ -1759,7 +1866,7 @@ function TaskAPI:CreateCategory(CategoryData)
 	return Category
 end
 
-InputService.InputBegan:Connect(function(Input, GameProcessed)
+TrackTaskConnection(InputService.InputBegan:Connect(function(Input, GameProcessed)
 	if ActiveKeybindModule and ActiveKeybindModule.Button and ActiveKeybindModule.Button.Parent then
 		if Input.UserInputType == Enum.UserInputType.Keyboard then
 			if Input.KeyCode == Enum.KeyCode.Escape or Input.KeyCode == Enum.KeyCode.Backspace then
@@ -1808,15 +1915,63 @@ InputService.InputBegan:Connect(function(Input, GameProcessed)
 			end
 		end
 	end
-end)
+end))
 
-InputService.InputChanged:Connect(function(Input)
-	if Input.UserInputType == Enum.UserInputType.MouseMovement and ActiveToolTipText then
+TrackTaskConnection(InputService.InputChanged:Connect(function(Input)
+	if Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+		return
+	end
+
+	if ActiveToolTipText then
 		UpdateToolTipPosition(Input.Position)
 	end
-end)
+
+	if ActiveSlider and type(ActiveSlider.ApplyMousePosition) == "function" then
+		ActiveSlider.ApplyMousePosition(Input.Position.X)
+	end
+
+	if ActiveCategoryDrag then
+		local Delta = Input.Position - ActiveCategoryDrag.DragStart
+		local StartPosition = ActiveCategoryDrag.StartPosition
+		local ContainerFrame = ActiveCategoryDrag.ContainerFrame
+		local Category = ActiveCategoryDrag.Category
+
+		ContainerFrame.Position = UDim2.new(
+			StartPosition.X.Scale,
+			StartPosition.X.Offset + Delta.X,
+			StartPosition.Y.Scale,
+			StartPosition.Y.Offset + Delta.Y
+		)
+		Category.Position = ContainerFrame.Position
+	end
+end))
+
+TrackTaskConnection(InputService.InputEnded:Connect(function(Input)
+	if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+		ActiveSlider = nil
+		if ActiveCategoryDrag then
+			ActiveCategoryDrag.Category.Position = ActiveCategoryDrag.ContainerFrame.Position
+			ActiveCategoryDrag = nil
+		end
+	end
+end))
+
+TrackTaskConnection(RunService.RenderStepped:Connect(function()
+	local CurrentTime = time()
+	for Module in pairs(AnimatedModules) do
+		if type(Module) ~= "table" or Module.Button == nil or Module.Button.Parent == nil or not Module.Enabled then
+			AnimatedModules[Module] = nil
+		else
+			UpdateModuleHighlight(Module, CurrentTime)
+		end
+	end
+end))
 
 function TaskAPI:Shutdown()
+	ActiveSlider = nil
+	ActiveCategoryDrag = nil
+	AnimatedModules = {}
+
 	if type(self.Connections) == "table" then
 		for index = #self.Connections, 1, -1 do
 			local connection = self.Connections[index]
