@@ -1,7 +1,15 @@
 local LoaderUrl = "https://raw.githubusercontent.com/OliusSchool/Taskium/main/Client/Loader.lua"
 
 local function HttpGet(Url)
-	return game:HttpGet(Url, true)
+	local Succeeded, Body = pcall(function()
+		return game:HttpGet(Url, true)
+	end)
+
+	if not Succeeded then
+		error("Taskium root loader failed to download Client/Loader.lua: " .. tostring(Body))
+	end
+
+	return Body
 end
 
 local LoaderSource = HttpGet(LoaderUrl)

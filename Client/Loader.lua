@@ -18,7 +18,8 @@ local BootstrapFilePaths = {
 	"Client/Config.lua",
 	"GUI/TaskUI.lua",
 	"GUI/Categories.lua",
-	"Games/Universal.lua"
+	"Games/Universal.lua",
+	"Games/Bedwars.lua"
 }
 
 local RequiredFolderPaths = {
@@ -124,9 +125,25 @@ local function SendHttpRequest(RequestUrl)
 			Url = RequestUrl,
 			Method = "GET"
 		})
+	elseif type(game.HttpGet) == "function" then
+		local Body = game:HttpGet(RequestUrl, true)
+		HttpResponse = {
+			StatusCode = 200,
+			Body = Body
+		}
 	else
-		error("Taskium loader requires syn.request, request, or http_request")
+		error("Taskium loader requires syn.request, request, http_request, or game:HttpGet")
 	end
+
+	if type(HttpResponse) == "string" then
+		HttpResponse = {
+			StatusCode = 200,
+			Body = HttpResponse
+		}
+	end
+
+	HttpResponse.StatusCode = HttpResponse.StatusCode or HttpResponse.status or HttpResponse.Status or 0
+	HttpResponse.Body = HttpResponse.Body or HttpResponse.body or ""
 
 	return HttpResponse
 end
@@ -413,7 +430,7 @@ local function DownloadRepositoryFile(RelativeFilePath, ShouldForceUpdate, SyncR
 
 	local HttpResponse = SendHttpRequest(RemoteFileUrl)
 
-	if HttpResponse.StatusCode == 200 then
+	if HttpResponse.StatusCode >= 200 and HttpResponse.StatusCode < 300 then
 		local RemoteFileContent = HttpResponse.Body
 		local RemoteFileHash = ComputeContentHash(RemoteFileContent)
 		local ShouldWriteRemoteFile = true
@@ -483,7 +500,7 @@ local function DownloadRepositoryFile(RelativeFilePath, ShouldForceUpdate, SyncR
 		return true
 	end
 
-	warn("Failed to download: " .. RemoteFileUrl)
+	warn(("Failed to download (%s): %s"):format(tostring(HttpResponse.StatusCode), RemoteFileUrl))
 	if SyncReport then
 		table.insert(SyncReport.FailedFiles, LocalWorkspaceFilePath)
 	end
@@ -496,18 +513,28 @@ local function CollectRepositoryFilesRecursively(RepositoryFolderPath, Collected
 	local ContentsApiUrl = RepositoryContentsApiUrl .. RepositoryFolderPath
 	local HttpResponse = SendHttpRequest(ContentsApiUrl)
 
-	if HttpResponse.StatusCode ~= 200 then
-		warn("Failed to get directory listing for: " .. RepositoryFolderPath)
+	if HttpResponse.StatusCode < 200 or HttpResponse.StatusCode >= 300 then
+		warn(("Failed to get directory listing (%s): %s"):format(tostring(HttpResponse.StatusCode), RepositoryFolderPath))
 		return CollectedFilePaths
 	end
 
-	local DecodedItems = HttpService:JSONDecode(HttpResponse.Body)
+	local DecodeSucceeded, DecodedItems = pcall(function()
+		return HttpService:JSONDecode(HttpResponse.Body)
+	end)
+
+	if not DecodeSucceeded or type(DecodedItems) ~= "table" then
+		warn("Failed to decode directory listing for: " .. RepositoryFolderPath)
+		return CollectedFilePaths
+	end
 
 	for _, RepositoryItem in ipairs(DecodedItems) do
-		if RepositoryItem.type == "File" then
-			table.insert(CollectedFilePaths, RepositoryItem.Path or (RepositoryFolderPath .. "/" .. RepositoryItem.name))
-		elseif RepositoryItem.type == "dir" then
-			CollectRepositoryFilesRecursively(RepositoryItem.Path or (RepositoryFolderPath .. "/" .. RepositoryItem.name), CollectedFilePaths)
+		local ItemType = RepositoryItem.type
+		local ItemPath = RepositoryItem.path or RepositoryItem.Path or (RepositoryFolderPath ~= "" and (RepositoryFolderPath .. "/" .. RepositoryItem.name) or RepositoryItem.name)
+
+		if ItemType == "file" or ItemType == "File" then
+			table.insert(CollectedFilePaths, ItemPath)
+		elseif ItemType == "dir" then
+			CollectRepositoryFilesRecursively(ItemPath, CollectedFilePaths)
 		end
 	end
 
@@ -601,6 +628,11 @@ local function BootTaskium()
 
 	ExecuteWorkspaceFile("Taskium/GUI/Categories.lua")
 	ExecuteWorkspaceFile("Taskium/Games/Universal.lua")
+
+	local BedwarsGamePath = WorkspaceRootFolder .. "/Games/Bedwars.lua"
+	if isfile(BedwarsGamePath) then
+		ExecuteWorkspaceFile(BedwarsGamePath)
+	end
 
 	return TaskAPI
 end

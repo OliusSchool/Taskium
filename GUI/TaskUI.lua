@@ -42,13 +42,10 @@ TaskAPI.Config = TaskConfig
 local ActiveKeybindModule = nil
 local ActiveSlider = nil
 local ActiveCategoryDrag = nil
-local AnimatedModules = {}
 
 local function IsFlyMovementKeyCode(KeyCode)
 	return KeyCode == Enum.KeyCode.Space
 		or KeyCode == Enum.KeyCode.LeftShift
-		or KeyCode == Enum.KeyCode.ButtonA
-		or KeyCode == Enum.KeyCode.ButtonL2
 end
 
 local function IsReservedKeybindName(Module, KeybindName)
@@ -82,10 +79,8 @@ local function IsReservedModuleKeybind(Input)
 	end
 
 	local FlyModule = TaskAPI.Modules and TaskAPI.Modules.Fly
-	if FlyModule and FlyModule.Enabled then
-		if IsFlyMovementKeyCode(Input.KeyCode) then
-			return true
-		end
+	if FlyModule and FlyModule.Enabled and IsFlyMovementKeyCode(Input.KeyCode) then
+		return true
 	end
 
 	return false
@@ -264,18 +259,6 @@ local function TrackTaskConnection(Connection)
 	return Connection
 end
 
-local function SetModuleAnimated(Module, State)
-	if Module == nil then
-		return
-	end
-
-	if State then
-		AnimatedModules[Module] = true
-	else
-		AnimatedModules[Module] = nil
-	end
-end
-
 local ToolTipFrame = Instance.new("Frame")
 ToolTipFrame.Name = "ModuleToolTip"
 ToolTipFrame.Size = UDim2.new(0, 20, 0, 20)
@@ -451,6 +434,10 @@ local function TweenYSize(InstanceObject, TargetHeight, TweenStore, TweenKey)
 	Tween:Play()
 end
 
+local function GetModuleControlCount(Module)
+	return #Module.ToggleList + #Module.SliderList + #Module.DropdownList + #Module.TextBoxList
+end
+
 local function UpdateModuleLayout(Module, Animate)
 	local RowHeight = 35
 	local OptionsHeight = 0
@@ -466,18 +453,8 @@ local function UpdateModuleLayout(Module, Animate)
 		Module.Container.Size = UDim2.new(1, 0, 0, RowHeight + OptionsHeight)
 	end
 
-	Module.ArrowButton.Visible = (#Module.ToggleList + #Module.SliderList + #Module.DropdownList) > 0
+	Module.ArrowButton.Visible = GetModuleControlCount(Module) > 0
 	Module.ArrowButton.Text = Module.Expanded and "v" or ">"
-end
-
-local function ApplyArraylistGradient(Gradient, Rotation)
-	Gradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0.00, Color3.fromRGB(158, 158, 158)),
-		ColorSequenceKeypoint.new(0.33, Color3.fromRGB(238, 238, 238)),
-		ColorSequenceKeypoint.new(0.66, Color3.fromRGB(82, 82, 82)),
-		ColorSequenceKeypoint.new(1.00, Color3.fromRGB(158, 158, 158))
-	})
-	Gradient.Rotation = Rotation or 0
 end
 
 local function NormalizeNotificationData(Title, Message, Duration, NotificationType)
@@ -636,34 +613,19 @@ local function UpdateCategorySize(Category)
 	UpdateShadowSize(Category)
 end
 
-local function UpdateModuleHighlight(Module, CurrentTime)
-	if Module == nil or Module.Highlight == nil or Module.HighlightGradient == nil then
-		return
-	end
-
-	Module.Highlight.Visible = Module.Enabled
-	if Module.Enabled then
-		Module.HighlightGradient.Offset = Vector2.new((CurrentTime * 1.1) % 2 - 1, 0)
-	else
-		Module.HighlightGradient.Offset = Vector2.new(0, 0)
-	end
-end
-
 local function RefreshModuleDisplay(Module)
 	if Module.Button == nil or Module.Button.Parent == nil then
 		return
 	end
 
-	Module.Button.BackgroundColor3 = Module.Enabled and Color3.fromRGB(12, 12, 12) or Color3.fromRGB(17, 17, 17)
-	SetModuleAnimated(Module, Module.Enabled)
-	UpdateModuleHighlight(Module, time())
-	Module.NameLabel.TextColor3 = Module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(205, 205, 205)
-	Module.ArrowButton.TextColor3 = Module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
+	Module.Button.BackgroundColor3 = Module.Enabled and Color3.fromRGB(224, 224, 224) or Color3.fromRGB(17, 17, 17)
+	Module.NameLabel.TextColor3 = Module.Enabled and Color3.fromRGB(22, 22, 22) or Color3.fromRGB(205, 205, 205)
+	Module.ArrowButton.TextColor3 = Module.Enabled and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(170, 170, 170)
 	Module.NameLabel.Text = Module.Name
-	Module.ArrowButton.Visible = (#Module.ToggleList + #Module.SliderList + #Module.DropdownList) > 0
+	Module.ArrowButton.Visible = GetModuleControlCount(Module) > 0
 	Module.ArrowButton.Text = Module.Expanded and "v" or ">"
 	if Module.KeybindButton then
-		Module.KeybindButton.TextColor3 = Module.Enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
+		Module.KeybindButton.TextColor3 = Module.Enabled and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(170, 170, 170)
 		Module.KeybindButton.Text = Module.WaitingForKeybind and "..." or Module:GetKeybindDisplayText()
 	end
 end
@@ -828,21 +790,6 @@ function TaskAPI:CreateCategory(CategoryData)
 		ModuleButton.ZIndex = 4
 		ModuleButton.Parent = ModuleContainer
 
-		local ModuleHighlight = Instance.new("Frame")
-		ModuleHighlight.Name = "EnabledGradient"
-		ModuleHighlight.Size = UDim2.new(1, 0, 1, 0)
-		ModuleHighlight.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		ModuleHighlight.BackgroundTransparency = 0.35
-		ModuleHighlight.BorderSizePixel = 0
-		ModuleHighlight.Visible = false
-		ModuleHighlight.ZIndex = 4
-		ModuleHighlight.Parent = ModuleButton
-
-		local ModuleHighlightGradient = Instance.new("UIGradient")
-		ApplyArraylistGradient(ModuleHighlightGradient, 0)
-		ModuleHighlightGradient.Offset = Vector2.new(0, 0)
-		ModuleHighlightGradient.Parent = ModuleHighlight
-
 		local NameLabel = Instance.new("TextLabel")
 		NameLabel.Name = "ModuleName"
 		NameLabel.Size = UDim2.new(1, -92, 1, 0)
@@ -913,8 +860,6 @@ function TaskAPI:CreateCategory(CategoryData)
 			ToolTip = ModuleData.ToolTip or ModuleData.Tooltip,
 			Container = ModuleContainer,
 			Button = ModuleButton,
-			Highlight = ModuleHighlight,
-			HighlightGradient = ModuleHighlightGradient,
 			NameLabel = NameLabel,
 			KeybindButton = KeybindButton,
 			ArrowButton = ArrowButton,
@@ -926,12 +871,13 @@ function TaskAPI:CreateCategory(CategoryData)
 			Sliders = {},
 			DropdownList = {},
 			Dropdowns = {},
+			TextBoxList = {},
+			TextBoxes = {},
 			Category = self,
 			Cleanups = {},
 			Tweens = {},
 			Keybind = nil,
-			WaitingForKeybind = false,
-			LastKeybindToggleAt = 0
+			WaitingForKeybind = false
 		}
 
 		OptionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -1510,6 +1456,154 @@ function TaskAPI:CreateCategory(CategoryData)
 			return Slider
 		end
 
+		function Module:CreateTextBox(TextBoxData)
+			if not TextBoxData or type(TextBoxData.Name) ~= "string" or TextBoxData.Name == "" then
+				error(("Module '%s' requires a valid TextBox name"):format(self.Name))
+			end
+
+			if self.TextBoxes[TextBoxData.Name] then
+				error(("TextBox '%s' already exists in Module '%s'"):format(TextBoxData.Name, self.Name))
+			end
+
+			if TextBoxData.Function ~= nil and type(TextBoxData.Function) ~= "function" then
+				error(("TextBox '%s' Function must be a function"):format(TextBoxData.Name))
+			end
+
+			local DefaultValue = TextBoxData.Default
+			if DefaultValue == nil then
+				DefaultValue = TextBoxData.Value
+			end
+			DefaultValue = tostring(DefaultValue or "")
+
+			local TextBoxButton = Instance.new("TextButton")
+			TextBoxButton.Name = TextBoxData.Name
+			TextBoxButton.Size = UDim2.new(1, 0, 0, 30)
+			TextBoxButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			TextBoxButton.BorderSizePixel = 0
+			TextBoxButton.AutoButtonColor = false
+			TextBoxButton.Text = ""
+			TextBoxButton.ZIndex = 4
+			TextBoxButton.Parent = self.OptionsHolder
+
+			local TextBoxNameLabel = Instance.new("TextLabel")
+			TextBoxNameLabel.Name = "TextBoxName"
+			TextBoxNameLabel.Size = UDim2.new(1, -140, 1, 0)
+			TextBoxNameLabel.Position = UDim2.new(0, 18, 0, 0)
+			TextBoxNameLabel.BackgroundTransparency = 1
+			TextBoxNameLabel.Text = TextBoxData.Name
+			TextBoxNameLabel.TextSize = 10
+			TextBoxNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			TextBoxNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			TextBoxNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			TextBoxNameLabel.Font = Enum.Font.GothamBold
+			TextBoxNameLabel.ZIndex = 5
+			TextBoxNameLabel.Parent = TextBoxButton
+
+			local TextBoxInput = Instance.new("TextBox")
+			TextBoxInput.Name = "TextBoxInput"
+			TextBoxInput.Size = UDim2.new(0, 112, 0, 18)
+			TextBoxInput.AnchorPoint = Vector2.new(1, 0.5)
+			TextBoxInput.Position = UDim2.new(1, -8, 0.5, 0)
+			TextBoxInput.BackgroundTransparency = 1
+			TextBoxInput.BorderSizePixel = 0
+			TextBoxInput.ClearTextOnFocus = false
+			TextBoxInput.MultiLine = false
+			TextBoxInput.Text = DefaultValue
+			TextBoxInput.PlaceholderText = tostring(TextBoxData.Placeholder or "")
+			TextBoxInput.TextSize = 9
+			TextBoxInput.TextColor3 = Color3.fromRGB(170, 170, 170)
+			TextBoxInput.PlaceholderColor3 = Color3.fromRGB(110, 110, 110)
+			TextBoxInput.TextXAlignment = Enum.TextXAlignment.Right
+			TextBoxInput.TextYAlignment = Enum.TextYAlignment.Center
+			TextBoxInput.Font = Enum.Font.GothamBold
+			TextBoxInput.ZIndex = 6
+			TextBoxInput.Parent = TextBoxButton
+
+			local TextBox = {
+				Name = TextBoxData.Name,
+				ConfigKey = BuildConfigKey(self.ConfigKey, TextBoxData.Name),
+				Value = DefaultValue,
+				Function = TextBoxData.Function,
+				ToolTip = TextBoxData.ToolTip or TextBoxData.Tooltip,
+				Placeholder = tostring(TextBoxData.Placeholder or ""),
+				Button = TextBoxButton,
+				NameLabel = TextBoxNameLabel,
+				Input = TextBoxInput,
+				Module = self,
+				ControlHeight = 30
+			}
+
+			local function ApplyTextBoxVisuals(Value)
+				local DisplayValue = tostring(Value or "")
+				TextBox.Input.Text = DisplayValue
+				TextBox.Input.PlaceholderText = TextBox.Placeholder
+			end
+
+			function TextBox:SetValue(Value, EnterPressed, SkipCallback, Options)
+				Options = Options or {}
+				Value = tostring(Value or "")
+
+				if self.Value == Value then
+					ApplyTextBoxVisuals(Value)
+					if not SkipCallback and self.Function and (Options.ForceCallback or EnterPressed) then
+						InvokeTaskCallback("TextBox", self.Name, self.Function, not not EnterPressed)
+					end
+					return
+				end
+
+				self.Value = Value
+				ApplyTextBoxVisuals(Value)
+
+				if not Options.SkipConfig then
+					SetConfigValue("TextBox", self.ConfigKey, self.Value)
+				end
+
+				if not SkipCallback and self.Function then
+					InvokeTaskCallback("TextBox", self.Name, self.Function, not not EnterPressed)
+				end
+			end
+
+			function TextBox:CaptureFocus()
+				self.Input:CaptureFocus()
+				self.Input.CursorPosition = #self.Input.Text + 1
+			end
+
+			TextBoxButton.MouseButton1Click:Connect(function()
+				TextBox:CaptureFocus()
+			end)
+
+			TextBoxButton.MouseEnter:Connect(function()
+				ShowToolTip(TextBox.ToolTip)
+			end)
+
+			TextBoxButton.MouseLeave:Connect(function()
+				HideToolTip()
+			end)
+
+			TextBoxInput.MouseEnter:Connect(function()
+				ShowToolTip(TextBox.ToolTip)
+			end)
+
+			TextBoxInput.MouseLeave:Connect(function()
+				HideToolTip()
+			end)
+
+			TextBoxInput.FocusLost:Connect(function(EnterPressed)
+				TextBox:SetValue(TextBoxInput.Text, EnterPressed, false)
+			end)
+
+			table.insert(self.TextBoxList, TextBox)
+			self.TextBoxes[TextBox.Name] = TextBox
+			UpdateModuleLayout(self)
+			UpdateCategorySize(self.Category)
+			RefreshModuleDisplay(self)
+			TextBox:SetValue(RegisterConfigValue("TextBox", TextBox.ConfigKey, DefaultValue), false, true, {
+				SkipConfig = true
+			})
+
+			return TextBox
+		end
+
 		function Module:CreateDropdown(DropdownData)
 			if not DropdownData or type(DropdownData.Name) ~= "string" or DropdownData.Name == "" then
 				error(("Module '%s' requires a valid Dropdown name"):format(self.Name))
@@ -1787,6 +1881,12 @@ function TaskAPI:CreateCategory(CategoryData)
 			end
 		end
 
+		if type(ModuleData.TextBoxes) == "table" then
+			for _, TextBoxData in ipairs(ModuleData.TextBoxes) do
+				Module:CreateTextBox(TextBoxData)
+			end
+		end
+
 		ModuleButton.MouseButton1Click:Connect(function()
 			Module:Toggle()
 		end)
@@ -1800,7 +1900,7 @@ function TaskAPI:CreateCategory(CategoryData)
 		end)
 
 		ModuleButton.MouseButton2Click:Connect(function()
-			if (#Module.ToggleList + #Module.SliderList + #Module.DropdownList) > 0 then
+			if GetModuleControlCount(Module) > 0 then
 				Module:SetExpanded(not Module.Expanded)
 			end
 		end)
@@ -1900,18 +2000,11 @@ TrackTaskConnection(InputService.InputBegan:Connect(function(Input, GameProcesse
 			return
 		end
 
-		local CurrentTime = tick()
 		for _, Module in pairs(TaskAPI.Modules) do
 			if type(Module) == "table" and Module.Keybind and Module.Keybind == Input.KeyCode.Name then
-				if (CurrentTime - (Module.LastKeybindToggleAt or 0)) < 0.25 then
-					continue
+				if Module.Button and Module.Button.Parent then
+					Module:Toggle()
 				end
-				Module.LastKeybindToggleAt = CurrentTime
-				task.defer(function()
-					if Module.Button and Module.Button.Parent then
-						Module:Toggle()
-					end
-				end)
 			end
 		end
 	end
@@ -1956,21 +2049,9 @@ TrackTaskConnection(InputService.InputEnded:Connect(function(Input)
 	end
 end))
 
-TrackTaskConnection(RunService.RenderStepped:Connect(function()
-	local CurrentTime = time()
-	for Module in pairs(AnimatedModules) do
-		if type(Module) ~= "table" or Module.Button == nil or Module.Button.Parent == nil or not Module.Enabled then
-			AnimatedModules[Module] = nil
-		else
-			UpdateModuleHighlight(Module, CurrentTime)
-		end
-	end
-end))
-
 function TaskAPI:Shutdown()
 	ActiveSlider = nil
 	ActiveCategoryDrag = nil
-	AnimatedModules = {}
 
 	if type(self.Connections) == "table" then
 		for index = #self.Connections, 1, -1 do
