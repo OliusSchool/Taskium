@@ -1,0 +1,2213 @@
+local Players = game:GetService("Players")
+local InputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
+local TweenService = game:GetService("TweenService")
+
+local LPlayer = Players.LocalPlayer
+local PlayerGui = LPlayer:WaitForChild("PlayerGui")
+
+local TaskAPI = {
+	Categories = {},
+	CategoryList = {},
+	Modules = {},
+	Notifications = {},
+	Version = { "1.0.0" }
+}
+
+local DefaultCategoryMaxHeight = 300
+
+local PreviousTaskAPI = getgenv().TaskAPI
+
+local TaskAssets = {
+	CategoryFrame = "rbxassetid://126645359069961",
+	ShadowEffect = "rbxassetid://125043055375567",
+	NotificationFrame = "rbxassetid://104039542635709",
+	ToolTipFrame = "rbxassetid://109798445140553"
+}
+
+local NotificationColors = {
+	Client = Color3.fromRGB(255, 255, 255),
+	Success = Color3.fromRGB(46, 204, 113),
+	Error = Color3.fromRGB(231, 76, 60),
+	Warning = Color3.fromRGB(241, 196, 15),
+	Info = Color3.fromRGB(52, 152, 219)
+}
+
+getgenv().Taskium = getgenv().Taskium or {}
+getgenv().Taskium.API = TaskAPI
+getgenv().TaskAPI = TaskAPI
+
+local TaskConfig = getgenv().Taskium and getgenv().Taskium.Config
+TaskAPI.Config = TaskConfig
+local ActiveKeybindModule = nil
+local ActiveSlider = nil
+local ActiveCategoryDrag = nil
+
+local function IsFlyMovementKeyCode(KeyCode)
+	return KeyCode == Enum.KeyCode.Space
+		or KeyCode == Enum.KeyCode.LeftShift
+end
+
+local function IsReservedKeybindName(Module, KeybindName)
+	if type(KeybindName) ~= "string" or KeybindName == "" then
+		return false
+	end
+
+	local KeyCode = Enum.KeyCode[KeybindName]
+	if KeyCode == nil then
+		return false
+	end
+
+	if KeyCode == Enum.KeyCode.RightShift then
+		return true, "RightShift is reserved for opening Taskium."
+	end
+
+	if Module and Module.Name == "Fly" and IsFlyMovementKeyCode(KeyCode) then
+		return true, "Space and LeftShift are reserved for Fly movement."
+	end
+
+	return false
+end
+
+local function IsReservedModuleKeybind(Input)
+	if Input.UserInputType ~= Enum.UserInputType.Keyboard then
+		return false
+	end
+
+	if Input.KeyCode == Enum.KeyCode.RightShift then
+		return true
+	end
+
+	local FlyModule = TaskAPI.Modules and TaskAPI.Modules.Fly
+	if FlyModule and FlyModule.Enabled and IsFlyMovementKeyCode(Input.KeyCode) then
+		return true
+	end
+
+	return false
+end
+
+local function BuildConfigKey(...)
+	local Parts = { ... }
+	for Index, Value in ipairs(Parts) do
+		Parts[Index] = tostring(Value)
+	end
+
+	return table.concat(Parts, "/")
+end
+
+local function RegisterConfigValue(Kind, Key, DefaultValue)
+	if TaskConfig and type(TaskConfig.Register) == "function" then
+		return TaskConfig:Register(Kind, Key, DefaultValue)
+	end
+
+	return DefaultValue
+end
+
+local function SetConfigValue(Kind, Key, Value)
+	if TaskConfig and type(TaskConfig.Set) == "function" then
+		return TaskConfig:Set(Kind, Key, Value)
+	end
+
+	return Value
+end
+
+local function NotifyTaskError(Kind, Name, ErrorMessage, Suffix)
+	local DisplaySuffix = Suffix and (" " .. Suffix) or ""
+	warn(("TaskAPI %s '%s'%s failed: %s"):format(Kind, tostring(Name), DisplaySuffix, tostring(ErrorMessage)))
+	TaskAPI.Notification({
+		Title = "Taskium",
+		Message = tostring(ErrorMessage),
+		Duration = 4,
+		Type = "Error"
+	})
+end
+
+local function InvokeTaskCallback(Kind, Name, Callback, ...)
+	if type(Callback) ~= "function" then
+		return true
+	end
+
+	local Success, Result = pcall(Callback, ...)
+	if not Success then
+		NotifyTaskError(Kind, Name, Result)
+	end
+
+	return Success, Result
+end
+
+local function GetClipboardSetter()
+	local GlobalEnvironment = type(getgenv) == "function" and getgenv() or _G
+	local ClipboardSetterNames = {
+		"setclipboard",
+		"toclipboard",
+		"setrbxclipboard",
+		"writeclipboard"
+	}
+
+	for _, ClipboardSetterName in ipairs(ClipboardSetterNames) do
+		local ClipboardSetter = GlobalEnvironment and GlobalEnvironment[ClipboardSetterName]
+		if type(ClipboardSetter) == "function" then
+			return ClipboardSetter
+		end
+	end
+
+	local ClipboardLibrary = GlobalEnvironment and GlobalEnvironment.Clipboard
+	if type(ClipboardLibrary) == "table" and type(ClipboardLibrary.set) == "function" then
+		return ClipboardLibrary.set
+	end
+
+	return nil
+end
+
+local function ShutdownAPI(Api)
+	if type(Api) ~= "table" then
+		return
+	end
+
+	local SeenModules = {}
+
+	if type(Api.Modules) == "table" then
+		for _, PreviousModule in pairs(Api.Modules) do
+			if type(PreviousModule) == "table" and not SeenModules[PreviousModule] then
+				SeenModules[PreviousModule] = true
+
+				if type(PreviousModule.SetEnabled) == "function" then
+					pcall(function()
+						PreviousModule:SetEnabled(false, {
+							SkipConfig = true,
+							SkipNotify = true
+						})
+					end)
+				end
+
+				PreviousModule.Enabled = false
+
+				if type(PreviousModule.Cleanup) == "function" then
+					pcall(function()
+						PreviousModule:Cleanup()
+					end)
+				end
+			end
+		end
+	end
+
+	if type(Api.BlurEffect) == "userdata" or typeof(Api.BlurEffect) == "Instance" then
+		pcall(function()
+			Api.BlurEffect.Enabled = false
+		end)
+	end
+end
+
+if PreviousTaskAPI and PreviousTaskAPI ~= TaskAPI then
+	ShutdownAPI(PreviousTaskAPI)
+end
+
+if PlayerGui:FindFirstChild("MainUI") then
+	PlayerGui.MainUI:Destroy()
+end
+
+if PlayerGui:FindFirstChild("TaskNotifications") then
+	PlayerGui.TaskNotifications:Destroy()
+end
+
+if Lighting:FindFirstChild("TaskUIBlur") then
+	Lighting.TaskUIBlur:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MainUI"
+ScreenGui.Enabled = false
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
+
+local BlurEffect = Instance.new("BlurEffect")
+BlurEffect.Name = "TaskUIBlur"
+BlurEffect.Size = 10
+BlurEffect.Enabled = false
+BlurEffect.Parent = Lighting
+
+local NotificationGui = Instance.new("ScreenGui")
+NotificationGui.Name = "TaskNotifications"
+NotificationGui.ResetOnSpawn = false
+NotificationGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+NotificationGui.Parent = PlayerGui
+
+local NotificationsContainer = Instance.new("Frame")
+NotificationsContainer.Name = "NotificationsContainer"
+NotificationsContainer.Size = UDim2.new(0, 290, 0.4, 0)
+NotificationsContainer.AnchorPoint = Vector2.new(1, 1)
+NotificationsContainer.Position = UDim2.new(1, -8, 1, -8)
+NotificationsContainer.BackgroundTransparency = 1
+NotificationsContainer.Parent = NotificationGui
+
+local NotificationListLayout = Instance.new("UIListLayout")
+NotificationListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NotificationListLayout.Padding = UDim.new(0, 10)
+NotificationListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+NotificationListLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotificationListLayout.Parent = NotificationsContainer
+
+TaskAPI.ScreenGui = ScreenGui
+TaskAPI.BlurEffect = BlurEffect
+TaskAPI.NotificationGui = NotificationGui
+TaskAPI.NotificationsContainer = NotificationsContainer
+TaskAPI.Connections = {}
+
+local function TrackTaskConnection(Connection)
+	table.insert(TaskAPI.Connections, Connection)
+	return Connection
+end
+
+local ToolTipFrame = Instance.new("Frame")
+ToolTipFrame.Name = "ModuleToolTip"
+ToolTipFrame.Size = UDim2.new(0, 20, 0, 20)
+ToolTipFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+ToolTipFrame.BackgroundTransparency = 0.1
+ToolTipFrame.BorderSizePixel = 0
+ToolTipFrame.ClipsDescendants = true
+ToolTipFrame.Visible = false
+ToolTipFrame.ZIndex = 50
+ToolTipFrame.Parent = ScreenGui
+
+local ToolTipCorner = Instance.new("UICorner")
+ToolTipCorner.CornerRadius = UDim.new(0, 20)
+ToolTipCorner.Parent = ToolTipFrame
+
+local ToolTipImage = Instance.new("ImageLabel")
+ToolTipImage.Name = "ToolTipImage"
+ToolTipImage.Size = ToolTipFrame.Size
+ToolTipImage.Position = ToolTipFrame.Position
+ToolTipImage.BackgroundTransparency = 1
+ToolTipImage.BorderSizePixel = 0
+ToolTipImage.Image = TaskAssets.ToolTipFrame
+ToolTipImage.ImageColor3 = Color3.fromRGB(255, 255, 255)
+ToolTipImage.ScaleType = Enum.ScaleType.Stretch
+ToolTipImage.ZIndex = 49
+ToolTipImage.Visible = false
+ToolTipImage.Parent = ScreenGui
+
+local ToolTipText = Instance.new("TextLabel")
+ToolTipText.Name = "ToolTipText"
+ToolTipText.Size = UDim2.new(1, -12, 1, 0)
+ToolTipText.Position = UDim2.new(0, 6, 0, 0)
+ToolTipText.BackgroundTransparency = 1
+ToolTipText.BorderSizePixel = 0
+ToolTipText.Text = ""
+ToolTipText.TextSize = 12
+ToolTipText.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToolTipText.TextXAlignment = Enum.TextXAlignment.Center
+ToolTipText.TextYAlignment = Enum.TextYAlignment.Center
+ToolTipText.Font = Enum.Font.Gotham
+ToolTipText.ZIndex = 51
+ToolTipText.Parent = ToolTipFrame
+
+local ActiveToolTipText = nil
+
+local function GetViewportSize()
+	local Camera = workspace.CurrentCamera
+	if Camera then
+		return Camera.ViewportSize
+	end
+
+	return Vector2.new(1920, 1080)
+end
+
+local function UpdateToolTipPosition(MousePosition)
+	if not ToolTipFrame.Visible then
+		return
+	end
+
+	local ViewportSize = GetViewportSize()
+	local ToolTipWidth = ToolTipFrame.Size.X.Offset
+	local ToolTipHeight = ToolTipFrame.Size.Y.Offset
+	local PositionX = math.clamp(MousePosition.X + 14, 6, ViewportSize.X - ToolTipWidth - 6)
+	local PositionY = math.clamp(MousePosition.Y + 16, 6, ViewportSize.Y - ToolTipHeight - 6)
+
+	local ToolTipPosition = UDim2.new(0, PositionX, 0, PositionY)
+	ToolTipFrame.Position = ToolTipPosition
+	ToolTipImage.Position = ToolTipPosition
+end
+
+local function ShowToolTip(Text)
+	if type(Text) ~= "string" or Text == "" then
+		return
+	end
+
+	ActiveToolTipText = Text
+
+	local TextSize = TextService:GetTextSize(Text, 12, Enum.Font.Gotham, Vector2.new(1000, 20))
+	local ToolTipWidth = math.max(20, TextSize.X + 14)
+
+	ToolTipFrame.Size = UDim2.new(0, ToolTipWidth, 0, 20)
+	ToolTipImage.Size = ToolTipFrame.Size
+	ToolTipText.Text = Text
+	ToolTipFrame.Visible = true
+	ToolTipImage.Visible = true
+	UpdateToolTipPosition(InputService:GetMouseLocation())
+end
+
+local function HideToolTip()
+	ActiveToolTipText = nil
+	ToolTipFrame.Visible = false
+	ToolTipImage.Visible = false
+	ToolTipText.Text = ""
+end
+
+local function CleanupItem(Item)
+	local ItemType = typeof(Item)
+
+	if ItemType == "RBXScriptConnection" then
+		if Item.Connected then
+			Item:Disconnect()
+		end
+		return
+	end
+
+	if ItemType == "Instance" then
+		if Item.Parent then
+			Item:Destroy()
+		end
+		return
+	end
+
+	if type(Item) == "function" then
+		pcall(Item)
+		return
+	end
+
+	if type(Item) == "table" then
+		if type(Item.Disconnect) == "function" then
+			pcall(function()
+				Item:Disconnect()
+			end)
+			return
+		end
+
+		if type(Item.Destroy) == "function" then
+			pcall(function()
+				Item:Destroy()
+			end)
+		end
+	end
+end
+
+local function UpdateShadowSize(Category)
+	local WidthOffset = Category.MainFrame.Size.X.Offset
+	local HeightOffset = Category.MainFrame.Size.Y.Offset
+	local ShadowPaddingX = 13
+	local ShadowPaddingY = 11
+
+	Category.ShadowEffect.Position = UDim2.new(0, -ShadowPaddingX, 0, -ShadowPaddingY)
+	Category.ShadowEffect.Size = UDim2.new(0, WidthOffset + 25, 0, HeightOffset + 23)
+	Category.ContainerFrame.Size = Category.MainFrame.Size
+end
+
+local function TweenYSize(InstanceObject, TargetHeight, TweenStore, TweenKey)
+	if not InstanceObject then
+		return
+	end
+
+	if TweenStore and TweenKey and TweenStore[TweenKey] then
+		TweenStore[TweenKey]:Cancel()
+		TweenStore[TweenKey] = nil
+	end
+
+	local Tween = TweenService:Create(
+		InstanceObject,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{
+			Size = UDim2.new(InstanceObject.Size.X.Scale, InstanceObject.Size.X.Offset, 0, TargetHeight)
+		}
+	)
+
+	if TweenStore and TweenKey then
+		TweenStore[TweenKey] = Tween
+	end
+
+	Tween.Completed:Connect(function()
+		if TweenStore and TweenKey and TweenStore[TweenKey] == Tween then
+			TweenStore[TweenKey] = nil
+		end
+	end)
+
+	Tween:Play()
+end
+
+local function GetModuleControlCount(Module)
+	return #Module.ToggleList + #Module.SliderList + #Module.DropdownList + #Module.TextBoxList + #Module.ButtonList
+end
+
+local function UpdateModuleLayout(Module, Animate)
+	local RowHeight = 35
+	local OptionsHeight = 0
+	if Module.Expanded and Module.OptionsLayout then
+		OptionsHeight = Module.OptionsLayout.AbsoluteContentSize.Y
+	end
+
+	if Animate then
+		TweenYSize(Module.OptionsHolder, OptionsHeight, Module.Tweens, "OptionsHolder")
+		TweenYSize(Module.Container, RowHeight + OptionsHeight, Module.Tweens, "Container")
+	else
+		Module.OptionsHolder.Size = UDim2.new(1, 0, 0, OptionsHeight)
+		Module.Container.Size = UDim2.new(1, 0, 0, RowHeight + OptionsHeight)
+	end
+
+	Module.ArrowButton.Visible = GetModuleControlCount(Module) > 0
+	Module.ArrowButton.Text = Module.Expanded and "v" or ">"
+end
+
+local function NormalizeNotificationData(Title, Message, Duration, NotificationType)
+	if type(Title) == "table" then
+		return {
+			Title = tostring(Title.Title or Title.Name or "Notification"),
+			Message = tostring(Title.Message or "No message has been set for this notification."),
+			Duration = tonumber(Title.Duration) or 3,
+			Type = Title.Type or "Client",
+			CopyText = Title.CopyText,
+			ClickToCopy = not not Title.ClickToCopy
+		}
+	end
+
+	return {
+		Title = tostring(Title or "Notification"),
+		Message = tostring(Message or "No message has been set for this notification."),
+		Duration = tonumber(Duration) or 3,
+		Type = NotificationType or "Client",
+		CopyText = nil,
+		ClickToCopy = false
+	}
+end
+
+function TaskAPI.Notification(Title, Message, Duration, NotificationType)
+	local NotificationData = NormalizeNotificationData(Title, Message, Duration, NotificationType)
+
+	local Holder = Instance.new("Frame")
+	Holder.Name = "NotificationHolder"
+	Holder.Size = UDim2.new(0, 270, 0, 60)
+	Holder.BackgroundTransparency = 1
+	Holder.BorderSizePixel = 0
+	Holder.ClipsDescendants = true
+	Holder.LayoutOrder = #TaskAPI.Notifications + 1
+	Holder.Parent = NotificationsContainer
+
+	local NotificationFrame = Instance.new("ImageLabel")
+	NotificationFrame.Name = "NotificationFrame"
+	NotificationFrame.Size = UDim2.new(0, 270, 0, 60)
+	NotificationFrame.Position = UDim2.new(1, 0, 0, 0)
+	NotificationFrame.BackgroundTransparency = 1
+	NotificationFrame.Image = TaskAssets.NotificationFrame
+	NotificationFrame.ScaleType = Enum.ScaleType.Stretch
+	NotificationFrame.ImageColor3 = Color3.fromRGB(255, 255, 255)
+	NotificationFrame.ZIndex = 10
+	NotificationFrame.Parent = Holder
+
+	local TitleLabel = Instance.new("TextLabel")
+	TitleLabel.Name = "NotificationTitle"
+	TitleLabel.Size = UDim2.new(1, -34, 0, 18)
+	TitleLabel.Position = UDim2.new(0, 18, 0, 12)
+	TitleLabel.BackgroundTransparency = 1
+	TitleLabel.Text = NotificationData.Title
+	TitleLabel.TextSize = 16
+	TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	TitleLabel.TextYAlignment = Enum.TextYAlignment.Center
+	TitleLabel.Font = Enum.Font.GothamBold
+	TitleLabel.ZIndex = 11
+	TitleLabel.Parent = NotificationFrame
+
+	local MessageLabel = Instance.new("TextLabel")
+	MessageLabel.Name = "MessageText"
+	MessageLabel.Size = UDim2.new(1, -34, 0, 22)
+	MessageLabel.Position = UDim2.new(0, 18, 0, 30)
+	MessageLabel.BackgroundTransparency = 1
+	MessageLabel.Text = NotificationData.Message
+	MessageLabel.TextSize = 13
+	MessageLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
+	MessageLabel.TextWrapped = true
+	MessageLabel.TextXAlignment = Enum.TextXAlignment.Left
+	MessageLabel.TextYAlignment = Enum.TextYAlignment.Top
+	MessageLabel.Font = Enum.Font.Gotham
+	MessageLabel.ZIndex = 11
+	MessageLabel.Parent = NotificationFrame
+
+	local ClickButton = Instance.new("TextButton")
+	ClickButton.Name = "ClickArea"
+	ClickButton.Size = UDim2.new(1, 0, 1, 0)
+	ClickButton.BackgroundTransparency = 1
+	ClickButton.BorderSizePixel = 0
+	ClickButton.AutoButtonColor = false
+	ClickButton.Text = ""
+	ClickButton.ZIndex = 12
+	ClickButton.Active = NotificationData.ClickToCopy
+	ClickButton.Visible = NotificationData.ClickToCopy
+	ClickButton.Parent = NotificationFrame
+
+	if NotificationData.ClickToCopy then
+		ClickButton.MouseButton1Click:Connect(function()
+			local ClipboardSetter = GetClipboardSetter()
+			if ClipboardSetter then
+				ClipboardSetter(tostring(NotificationData.CopyText or NotificationData.Message))
+			end
+		end)
+	end
+
+	table.insert(TaskAPI.Notifications, Holder)
+
+	local SlideInTween = TweenService:Create(NotificationFrame, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 0, 0, 0)
+	})
+
+	local SlideOutTween = TweenService:Create(NotificationFrame, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+		Position = UDim2.new(1, 0, 0, 0)
+	})
+
+	SlideInTween:Play()
+
+	task.spawn(function()
+		task.wait(NotificationData.Duration)
+		SlideOutTween:Play()
+		SlideOutTween.Completed:Wait()
+
+		local NotificationIndex = table.find(TaskAPI.Notifications, Holder)
+		if NotificationIndex then
+			table.remove(TaskAPI.Notifications, NotificationIndex)
+		end
+
+		Holder:Destroy()
+	end)
+
+	return Holder
+end
+
+function TaskAPI:Notify(NotificationData)
+	return TaskAPI.Notification(NotificationData)
+end
+
+local function UpdateCategorySize(Category)
+	local DefaultHeight = Category.DefaultSize.Y.Offset
+	local TotalContentHeight = 0
+	local MinimumContentHeight = 35
+	local BottomInset = 10
+	local HeaderHeight = 40
+	local MaxHeight = Category.MaxHeight or DefaultCategoryMaxHeight
+
+	if Category.ModulesLayout then
+		TotalContentHeight = Category.ModulesLayout.AbsoluteContentSize.Y
+	else
+		for _, Module in ipairs(Category.ModuleList) do
+			TotalContentHeight = TotalContentHeight + Module.Container.Size.Y.Offset
+		end
+	end
+
+	TotalContentHeight = math.max(TotalContentHeight, MinimumContentHeight)
+
+	local DesiredHeight = math.max(DefaultHeight, HeaderHeight + TotalContentHeight + BottomInset)
+	local TotalHeight = math.min(DesiredHeight, MaxHeight)
+	local ViewportHeight = math.max(0, TotalHeight - HeaderHeight - BottomInset)
+	local CanvasHeight = TotalContentHeight
+
+	Category.MainFrame.Size = UDim2.new(
+		Category.MainFrame.Size.X.Scale,
+		Category.MainFrame.Size.X.Offset,
+		0,
+		TotalHeight
+	)
+
+	Category.ModulesHolder.Size = UDim2.new(1, 0, 1, -(HeaderHeight + BottomInset))
+	if Category.ModulesHolder:IsA("ScrollingFrame") then
+		Category.ModulesHolder.CanvasSize = UDim2.new(0, 0, 0, CanvasHeight)
+		Category.ModulesHolder.ScrollingEnabled = CanvasHeight > ViewportHeight
+	end
+	UpdateShadowSize(Category)
+end
+
+local function SortCategoryModules(Category)
+	table.sort(Category.ModuleList, function(LeftModule, RightModule)
+		local LeftName = tostring(LeftModule.Name):lower()
+		local RightName = tostring(RightModule.Name):lower()
+		if LeftName == RightName then
+			return tostring(LeftModule.Name) < tostring(RightModule.Name)
+		end
+		return LeftName < RightName
+	end)
+
+	for Index, Module in ipairs(Category.ModuleList) do
+		if Module.Container then
+			Module.Container.LayoutOrder = Index
+		end
+	end
+end
+
+local function RefreshModuleDisplay(Module)
+	if Module.Button == nil or Module.Button.Parent == nil then
+		return
+	end
+
+	Module.Button.BackgroundColor3 = Module.Enabled and Color3.fromRGB(224, 224, 224) or Color3.fromRGB(17, 17, 17)
+	Module.NameLabel.TextColor3 = Module.Enabled and Color3.fromRGB(22, 22, 22) or Color3.fromRGB(205, 205, 205)
+	Module.ArrowButton.TextColor3 = Module.Enabled and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(170, 170, 170)
+	Module.NameLabel.Text = Module.Name
+	Module.ArrowButton.Visible = GetModuleControlCount(Module) > 0
+	Module.ArrowButton.Text = Module.Expanded and "v" or ">"
+	if Module.KeybindButton then
+		Module.KeybindButton.TextColor3 = Module.Enabled and Color3.fromRGB(35, 35, 35) or Color3.fromRGB(170, 170, 170)
+		Module.KeybindButton.Text = Module.WaitingForKeybind and "..." or Module:GetKeybindDisplayText()
+	end
+end
+
+local function RefreshToggleDisplay(Toggle)
+	if Toggle.Button == nil or Toggle.Button.Parent == nil then
+		return
+	end
+
+	local ToggleEnabled = Toggle.Value
+
+	Toggle.Button.BackgroundColor3 = ToggleEnabled and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
+	Toggle.NameLabel.TextColor3 = ToggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
+	Toggle.StateLabel.Text = ToggleEnabled and "On" or "Off"
+	Toggle.StateLabel.TextColor3 = ToggleEnabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 170)
+end
+
+function TaskAPI:CreateCategory(CategoryData)
+	if not CategoryData or type(CategoryData.Name) ~= "string" or CategoryData.Name == "" then
+		error("TaskAPI:CreateCategory requires a Category name")
+	end
+
+	if CategoryData.Position and typeof(CategoryData.Position) ~= "UDim2" then
+		error("TaskAPI:CreateCategory requires Position to be a UDim2")
+	end
+
+	if CategoryData.AnchorPoint and typeof(CategoryData.AnchorPoint) ~= "Vector2" then
+		error("TaskAPI:CreateCategory requires AnchorPoint to be a Vector2")
+	end
+
+	if self.Categories[CategoryData.Name] then
+		error(("TaskAPI Category '%s' already exists"):format(CategoryData.Name))
+	end
+
+	local CategoryPosition = CategoryData.Position or UDim2.new(0, 0, 0, 0)
+	local CategoryAnchorPoint = CategoryData.AnchorPoint or Vector2.new(0, 0)
+
+	local ContainerFrame = Instance.new("Frame")
+	ContainerFrame.Name = "CategoryContainer_" .. CategoryData.Name
+	ContainerFrame.Size = CategoryData.Size or UDim2.new(0, 165, 0, 82)
+	ContainerFrame.AnchorPoint = CategoryAnchorPoint
+	ContainerFrame.Position = CategoryPosition
+	ContainerFrame.BackgroundTransparency = 1
+	ContainerFrame.BorderSizePixel = 0
+	ContainerFrame.ZIndex = 1
+	ContainerFrame.Parent = ScreenGui
+
+	local MainFrame = Instance.new("Frame")
+	MainFrame.Name = "MainFrame_" .. CategoryData.Name
+	MainFrame.Size = CategoryData.Size or UDim2.new(0, 165, 0, 82)
+	MainFrame.Position = UDim2.new(0, 0, 0, 0)
+	MainFrame.BackgroundColor3 = CategoryData.BackgroundColor3 or Color3.fromRGB(0, 0, 0)
+	MainFrame.BorderSizePixel = 0
+	MainFrame.ClipsDescendants = true
+	MainFrame.ZIndex = 2
+	MainFrame.Parent = ContainerFrame
+
+	local MainFrameCorner = Instance.new("UICorner")
+	MainFrameCorner.CornerRadius = UDim.new(0, 10)
+	MainFrameCorner.Parent = MainFrame
+
+	local ShadowEffect = Instance.new("ImageLabel")
+	ShadowEffect.Name = "ShadowEffect"
+	ShadowEffect.Size = UDim2.new(0, 190, 0, 105)
+	ShadowEffect.Position = UDim2.new(0, -13, 0, -11)
+	ShadowEffect.BackgroundTransparency = 1
+	ShadowEffect.Image = TaskAssets.ShadowEffect
+	ShadowEffect.ZIndex = 1
+	ShadowEffect.Parent = ContainerFrame
+
+	local CategoryFrame = Instance.new("ImageLabel")
+	CategoryFrame.Name = "CategoryFrame"
+	CategoryFrame.Size = UDim2.new(1, 0, 0, 40)
+	CategoryFrame.Position = UDim2.new(0, 0, 0, 0)
+	CategoryFrame.Active = true
+	CategoryFrame.BackgroundTransparency = 1
+	CategoryFrame.Image = CategoryData.CategoryImage or TaskAssets.CategoryFrame
+	CategoryFrame.ImageColor3 = CategoryData.CategoryColor3 or Color3.fromRGB(255, 255, 255)
+	CategoryFrame.ZIndex = 3
+	CategoryFrame.Parent = MainFrame
+
+	local CategoryLabel = Instance.new("TextLabel")
+	CategoryLabel.Name = "CategoryText"
+	CategoryLabel.Size = UDim2.new(1, 0, 1, 0)
+	CategoryLabel.BackgroundTransparency = 1
+	CategoryLabel.Text = CategoryData.Name
+	CategoryLabel.TextSize = 18
+	CategoryLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	CategoryLabel.TextXAlignment = Enum.TextXAlignment.Center
+	CategoryLabel.TextYAlignment = Enum.TextYAlignment.Center
+	CategoryLabel.Font = Enum.Font.GothamBold
+	CategoryLabel.ZIndex = 4
+	CategoryLabel.Parent = CategoryFrame
+
+	local ModulesHolder = Instance.new("ScrollingFrame")
+	ModulesHolder.Name = "ModulesHolder"
+	ModulesHolder.Size = UDim2.new(1, 0, 1, -50)
+	ModulesHolder.Position = UDim2.new(0, 0, 0, 40)
+	ModulesHolder.BackgroundTransparency = 1
+	ModulesHolder.BorderSizePixel = 0
+	ModulesHolder.CanvasSize = UDim2.new(0, 0, 0, 0)
+	ModulesHolder.ScrollBarThickness = 0
+	ModulesHolder.ScrollBarImageTransparency = 1
+	ModulesHolder.ScrollingDirection = Enum.ScrollingDirection.Y
+	ModulesHolder.ZIndex = 4
+	ModulesHolder.Parent = MainFrame
+
+	local ModulesPadding = Instance.new("UIPadding")
+	ModulesPadding.PaddingTop = UDim.new(0, 0)
+	ModulesPadding.PaddingBottom = UDim.new(0, 0)
+	ModulesPadding.Parent = ModulesHolder
+
+	local ModulesLayout = Instance.new("UIListLayout")
+	ModulesLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	ModulesLayout.Padding = UDim.new(0, 0)
+	ModulesLayout.Parent = ModulesHolder
+
+	local Category = {
+		Name = CategoryData.Name,
+		Position = CategoryPosition,
+		AnchorPoint = CategoryAnchorPoint,
+		DefaultSize = CategoryData.Size or UDim2.new(0, 165, 0, 82),
+		MaxHeight = CategoryData.MaxHeight or DefaultCategoryMaxHeight,
+		ContainerFrame = ContainerFrame,
+		MainFrame = MainFrame,
+		TaskFrame = ContainerFrame,
+		ShadowEffect = ShadowEffect,
+		CategoryFrame = CategoryFrame,
+		CategoryLabel = CategoryLabel,
+		ModulesHolder = ModulesHolder,
+		ModulesLayout = ModulesLayout,
+		ModuleList = {},
+		Modules = {}
+	}
+
+	ModulesLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		UpdateCategorySize(Category)
+	end)
+
+	MainFrame:GetPropertyChangedSignal("Size"):Connect(function()
+		UpdateShadowSize(Category)
+	end)
+
+	function Category:CreateModule(ModuleData)
+		if not ModuleData or type(ModuleData.Name) ~= "string" or ModuleData.Name == "" then
+			error(("TaskAPI Category '%s' requires a valid Module name"):format(self.Name))
+		end
+
+		if self.Modules[ModuleData.Name] then
+			error(("Module '%s' already exists in Category '%s'"):format(ModuleData.Name, self.Name))
+		end
+
+		if ModuleData.Function ~= nil and type(ModuleData.Function) ~= "function" then
+			error(("Module '%s' Function must be a function"):format(ModuleData.Name))
+		end
+
+		local ModuleContainer = Instance.new("Frame")
+		ModuleContainer.Name = ModuleData.Name .. "_Container"
+		ModuleContainer.Size = UDim2.new(1, 0, 0, 35)
+		ModuleContainer.BackgroundTransparency = 1
+		ModuleContainer.BorderSizePixel = 0
+		ModuleContainer.ZIndex = 4
+		ModuleContainer.Parent = self.ModulesHolder
+
+		local ModuleButton = Instance.new("TextButton")
+		ModuleButton.Name = ModuleData.Name
+		ModuleButton.Size = UDim2.new(1, 0, 0, 35)
+		ModuleButton.BackgroundColor3 = Color3.fromRGB(17, 17, 17)
+		ModuleButton.BorderSizePixel = 0
+		ModuleButton.AutoButtonColor = false
+		ModuleButton.Text = ""
+		ModuleButton.TextSize = 16
+		ModuleButton.ZIndex = 4
+		ModuleButton.Parent = ModuleContainer
+
+		local NameLabel = Instance.new("TextLabel")
+		NameLabel.Name = "ModuleName"
+		NameLabel.Size = UDim2.new(1, -92, 1, 0)
+		NameLabel.Position = UDim2.new(0, 8, 0, 0)
+		NameLabel.BackgroundTransparency = 1
+		NameLabel.Text = ModuleData.Name
+		NameLabel.TextSize = 16
+		NameLabel.TextColor3 = Color3.fromRGB(205, 205, 205)
+		NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+		NameLabel.TextYAlignment = Enum.TextYAlignment.Center
+		NameLabel.Font = Enum.Font.GothamBold
+		NameLabel.ZIndex = 5
+		NameLabel.Parent = ModuleButton
+
+		local KeybindButton = Instance.new("TextButton")
+		KeybindButton.Name = "KeybindButton"
+		KeybindButton.Size = UDim2.new(0, 50, 1, 0)
+		KeybindButton.AnchorPoint = Vector2.new(1, 0)
+		KeybindButton.Position = UDim2.new(1, -28, 0, 0)
+		KeybindButton.BackgroundTransparency = 1
+		KeybindButton.AutoButtonColor = false
+		KeybindButton.Text = "None"
+		KeybindButton.TextSize = 12
+		KeybindButton.TextColor3 = Color3.fromRGB(170, 170, 170)
+		KeybindButton.TextXAlignment = Enum.TextXAlignment.Right
+		KeybindButton.TextYAlignment = Enum.TextYAlignment.Center
+		KeybindButton.Font = Enum.Font.Gotham
+		KeybindButton.ZIndex = 6
+		KeybindButton.Parent = ModuleButton
+
+		local ArrowButton = Instance.new("TextButton")
+		ArrowButton.Name = "ExpandArrow"
+		ArrowButton.Size = UDim2.new(0, 18, 1, 0)
+		ArrowButton.AnchorPoint = Vector2.new(1, 0)
+		ArrowButton.Position = UDim2.new(1, -6, 0, 0)
+		ArrowButton.BackgroundTransparency = 1
+		ArrowButton.AutoButtonColor = false
+		ArrowButton.Text = ">"
+		ArrowButton.TextSize = 16
+		ArrowButton.TextColor3 = Color3.fromRGB(170, 170, 170)
+		ArrowButton.Font = Enum.Font.GothamBold
+		ArrowButton.Visible = false
+		ArrowButton.ZIndex = 6
+		ArrowButton.Parent = ModuleButton
+
+		local OptionsHolder = Instance.new("Frame")
+		OptionsHolder.Name = "OptionsHolder"
+		OptionsHolder.Size = UDim2.new(1, 0, 0, 0)
+		OptionsHolder.Position = UDim2.new(0, 0, 0, 35)
+		OptionsHolder.BackgroundTransparency = 1
+		OptionsHolder.BorderSizePixel = 0
+		OptionsHolder.ClipsDescendants = true
+		OptionsHolder.ZIndex = 4
+		OptionsHolder.Parent = ModuleContainer
+
+		local OptionsLayout = Instance.new("UIListLayout")
+		OptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		OptionsLayout.Padding = UDim.new(0, 0)
+		OptionsLayout.Parent = OptionsHolder
+
+		local Module = {
+			Name = ModuleData.Name,
+			ConfigKey = BuildConfigKey(self.Name, ModuleData.Name),
+			Enabled = false,
+			Expanded = false,
+			RunId = 0,
+			Function = ModuleData.Function,
+			ToolTip = ModuleData.ToolTip or ModuleData.Tooltip,
+			Container = ModuleContainer,
+			Button = ModuleButton,
+			NameLabel = NameLabel,
+			KeybindButton = KeybindButton,
+			ArrowButton = ArrowButton,
+			OptionsHolder = OptionsHolder,
+			OptionsLayout = OptionsLayout,
+			ToggleList = {},
+			Toggles = {},
+			SliderList = {},
+			Sliders = {},
+			DropdownList = {},
+			Dropdowns = {},
+			TextBoxList = {},
+			TextBoxes = {},
+			ButtonList = {},
+			Buttons = {},
+			Category = self,
+			Cleanups = {},
+			Tweens = {},
+			Keybind = nil,
+			WaitingForKeybind = false
+		}
+
+		OptionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			UpdateModuleLayout(Module)
+			UpdateCategorySize(Module.Category)
+		end)
+
+		function Module:Clean(item)
+			table.insert(self.Cleanups, item)
+			return item
+		end
+
+		function Module:Cleanup()
+			for index = #self.Cleanups, 1, -1 do
+				CleanupItem(self.Cleanups[index])
+				table.remove(self.Cleanups, index)
+			end
+		end
+
+		function Module:GetRunId()
+			return self.RunId
+		end
+
+		function Module:IsActive(runId)
+			if runId == nil then
+				return self.Enabled
+			end
+
+			return self.Enabled and self.RunId == runId
+		end
+
+		function Module:SetEnabled(state, options)
+			options = options or {}
+			state = not not state
+			if self.Enabled == state then
+				return
+			end
+
+			self.Enabled = state
+			self.RunId = self.RunId + 1
+			local currentRunId = self.RunId
+			RefreshModuleDisplay(self)
+
+			if not options.SkipConfig then
+				SetConfigValue("Module", self.ConfigKey, self.Enabled)
+			end
+
+			if not options.SkipNotify then
+				TaskAPI.Notification({
+					Title = "Taskium",
+					Message = self.Name .. ": " .. (self.Enabled and "Enabled" or "Disabled"),
+					Duration = 3,
+					Type = self.Enabled and "Success" or "Info"
+				})
+			end
+
+			if self.Function then
+				if self.Enabled then
+					task.spawn(function()
+						local ok, err = InvokeTaskCallback("Module", self.Name, self.Function, true, currentRunId, self)
+						if not ok then
+							self.Enabled = false
+							RefreshModuleDisplay(self)
+							SetConfigValue("Module", self.ConfigKey, false)
+							self:Cleanup()
+						end
+					end)
+				else
+					local ok, err = pcall(self.Function, false, currentRunId, self)
+					if not ok then
+						NotifyTaskError("Module", self.Name, err, "disable")
+					end
+				end
+			end
+
+			for _, Toggle in ipairs(self.ToggleList) do
+				Toggle:ApplyCurrentState()
+			end
+
+			if not self.Enabled then
+				self:Cleanup()
+			end
+		end
+
+		function Module:Toggle()
+			self:SetEnabled(not self.Enabled)
+		end
+
+		function Module:GetKeybindDisplayText()
+			if not self.Keybind then
+				return "None"
+			end
+
+			return tostring(self.Keybind)
+		end
+
+		function Module:SetKeybind(KeybindName, options)
+			options = options or {}
+			local PreviousKeybind = self.Keybind
+
+			if KeybindName ~= nil then
+				KeybindName = tostring(KeybindName)
+				if Enum.KeyCode[KeybindName] == nil then
+					KeybindName = nil
+				end
+			end
+
+			if KeybindName ~= nil and not options.AllowReserved then
+				local Reserved, ReservedMessage = IsReservedKeybindName(self, KeybindName)
+				if Reserved then
+					self.WaitingForKeybind = false
+					RefreshModuleDisplay(self)
+					if not options.SkipNotify then
+						TaskAPI.Notification({
+							Title = "Taskium",
+							Message = ReservedMessage,
+							Duration = 4,
+							Type = "Warning"
+						})
+					end
+					return PreviousKeybind
+				end
+			end
+
+			self.Keybind = KeybindName
+			self.WaitingForKeybind = false
+			RefreshModuleDisplay(self)
+
+			if not options.SkipConfig then
+				SetConfigValue("Keybind", self.ConfigKey, self.Keybind)
+			end
+		end
+
+		function Module:BeginKeybindCapture()
+			self.WaitingForKeybind = true
+			RefreshModuleDisplay(self)
+		end
+
+		function Module:SetExpanded(state)
+			self.Expanded = not not state
+			UpdateModuleLayout(self, true)
+			UpdateCategorySize(self.Category)
+			RefreshModuleDisplay(self)
+		end
+
+		function Module:CreateToggle(ToggleData)
+			if not ToggleData or type(ToggleData.Name) ~= "string" or ToggleData.Name == "" then
+				error(("Module '%s' requires a valid Toggle name"):format(self.Name))
+			end
+
+			if self.Toggles[ToggleData.Name] then
+				error(("Toggle '%s' already exists in Module '%s'"):format(ToggleData.Name, self.Name))
+			end
+
+			if ToggleData.Function ~= nil and type(ToggleData.Function) ~= "function" then
+				error(("Toggle '%s' Function must be a function"):format(ToggleData.Name))
+			end
+
+			local ToggleButton = Instance.new("TextButton")
+			ToggleButton.Name = ToggleData.Name
+			ToggleButton.Size = UDim2.new(1, 0, 0, 30)
+			ToggleButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			ToggleButton.BorderSizePixel = 0
+			ToggleButton.AutoButtonColor = false
+			ToggleButton.Text = ""
+			ToggleButton.ZIndex = 4
+			ToggleButton.Parent = self.OptionsHolder
+
+			local ToggleNameLabel = Instance.new("TextLabel")
+			ToggleNameLabel.Name = "ToggleName"
+			ToggleNameLabel.Size = UDim2.new(1, -76, 1, 0)
+			ToggleNameLabel.Position = UDim2.new(0, 18, 0, 0)
+			ToggleNameLabel.BackgroundTransparency = 1
+			ToggleNameLabel.Text = ToggleData.Name
+			ToggleNameLabel.TextSize = 10
+			ToggleNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			ToggleNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			ToggleNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			ToggleNameLabel.Font = Enum.Font.GothamBold
+			ToggleNameLabel.ZIndex = 5
+			ToggleNameLabel.Parent = ToggleButton
+
+			local ToggleStateLabel = Instance.new("TextLabel")
+			ToggleStateLabel.Name = "ToggleState"
+			ToggleStateLabel.Size = UDim2.new(0, 44, 1, 0)
+			ToggleStateLabel.AnchorPoint = Vector2.new(1, 0)
+			ToggleStateLabel.Position = UDim2.new(1, -8, 0, 0)
+			ToggleStateLabel.BackgroundTransparency = 1
+			ToggleStateLabel.Text = "Off"
+			ToggleStateLabel.TextSize = 9
+			ToggleStateLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			ToggleStateLabel.TextXAlignment = Enum.TextXAlignment.Right
+			ToggleStateLabel.TextYAlignment = Enum.TextYAlignment.Center
+			ToggleStateLabel.Font = Enum.Font.GothamBold
+			ToggleStateLabel.ZIndex = 5
+			ToggleStateLabel.Parent = ToggleButton
+
+			local DefaultValue = not not ToggleData.Default
+
+			local Toggle = {
+				Name = ToggleData.Name,
+				ConfigKey = BuildConfigKey(self.ConfigKey, ToggleData.Name),
+				Enabled = false,
+				Value = DefaultValue,
+				Active = false,
+				Function = ToggleData.Function,
+				ToolTip = ToggleData.ToolTip or ToggleData.Tooltip,
+				Button = ToggleButton,
+				NameLabel = ToggleNameLabel,
+				StateLabel = ToggleStateLabel,
+				Module = self,
+				ControlHeight = 30
+			}
+
+			function Toggle:ApplyCurrentState(forceCallback)
+				RefreshToggleDisplay(self)
+
+				if not self.Function or not self.Module then
+					self.Enabled = false
+					self.Active = false
+					return
+				end
+
+				local shouldRun = self.Module.Enabled and self.Value
+				self.Enabled = shouldRun
+				if not forceCallback and self.Active == shouldRun then
+					return
+				end
+
+				self.Active = shouldRun
+				InvokeTaskCallback("Toggle", self.Name, self.Function, shouldRun)
+			end
+
+			function Toggle:SetEnabled(state, options)
+				options = options or {}
+				state = not not state
+				if self.Value == state then
+					RefreshToggleDisplay(self)
+					return
+				end
+
+				self.Value = state
+				RefreshToggleDisplay(self)
+
+				if not options.SkipConfig then
+					SetConfigValue("Toggle", self.ConfigKey, self.Value)
+				end
+
+				if self.Module and self.Module.Enabled then
+					self:ApplyCurrentState()
+				else
+					self.Enabled = false
+					self.Active = false
+				end
+			end
+
+			function Toggle:Toggle()
+				self:SetEnabled(not self.Value)
+			end
+
+			ToggleButton.MouseButton1Click:Connect(function()
+				Toggle:Toggle()
+			end)
+
+			ToggleButton.MouseEnter:Connect(function()
+				ShowToolTip(Toggle.ToolTip)
+			end)
+
+			ToggleButton.MouseLeave:Connect(function()
+				HideToolTip()
+			end)
+
+			table.insert(self.ToggleList, Toggle)
+			self.Toggles[Toggle.Name] = Toggle
+			UpdateModuleLayout(self)
+			UpdateCategorySize(self.Category)
+			RefreshModuleDisplay(self)
+			Toggle.Value = RegisterConfigValue("Toggle", Toggle.ConfigKey, DefaultValue)
+			Toggle.Enabled = false
+			Toggle.Active = false
+			RefreshToggleDisplay(Toggle)
+
+			return Toggle
+		end
+
+		function Module:CreateButton(ButtonData)
+			if not ButtonData or type(ButtonData.Name) ~= "string" or ButtonData.Name == "" then
+				error(("Module '%s' requires a valid Button name"):format(self.Name))
+			end
+
+			if self.Buttons[ButtonData.Name] then
+				error(("Button '%s' already exists in Module '%s'"):format(ButtonData.Name, self.Name))
+			end
+
+			if ButtonData.Function ~= nil and type(ButtonData.Function) ~= "function" then
+				error(("Button '%s' Function must be a function"):format(ButtonData.Name))
+			end
+
+			local ButtonFrame = Instance.new("TextButton")
+			ButtonFrame.Name = ButtonData.Name
+			ButtonFrame.Size = UDim2.new(1, 0, 0, 30)
+			ButtonFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			ButtonFrame.BorderSizePixel = 0
+			ButtonFrame.AutoButtonColor = false
+			ButtonFrame.Text = ""
+			ButtonFrame.ZIndex = 4
+			ButtonFrame.Parent = self.OptionsHolder
+
+			local ButtonNameLabel = Instance.new("TextLabel")
+			ButtonNameLabel.Name = "ButtonName"
+			ButtonNameLabel.Size = UDim2.new(1, -86, 1, 0)
+			ButtonNameLabel.Position = UDim2.new(0, 18, 0, 0)
+			ButtonNameLabel.BackgroundTransparency = 1
+			ButtonNameLabel.Text = ButtonData.Name
+			ButtonNameLabel.TextSize = 10
+			ButtonNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			ButtonNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			ButtonNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			ButtonNameLabel.Font = Enum.Font.GothamBold
+			ButtonNameLabel.ZIndex = 5
+			ButtonNameLabel.Parent = ButtonFrame
+
+			local ButtonActionLabel = Instance.new("TextLabel")
+			ButtonActionLabel.Name = "ButtonAction"
+			ButtonActionLabel.Size = UDim2.new(0, 54, 0, 18)
+			ButtonActionLabel.AnchorPoint = Vector2.new(1, 0.5)
+			ButtonActionLabel.Position = UDim2.new(1, -8, 0.5, 0)
+			ButtonActionLabel.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
+			ButtonActionLabel.BorderSizePixel = 0
+			ButtonActionLabel.Text = tostring(ButtonData.ActionText or ButtonData.Text or "Run")
+			ButtonActionLabel.TextSize = 9
+			ButtonActionLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
+			ButtonActionLabel.TextXAlignment = Enum.TextXAlignment.Center
+			ButtonActionLabel.TextYAlignment = Enum.TextYAlignment.Center
+			ButtonActionLabel.Font = Enum.Font.GothamBold
+			ButtonActionLabel.ZIndex = 5
+			ButtonActionLabel.Parent = ButtonFrame
+
+			local Button = {
+				Name = ButtonData.Name,
+				ConfigKey = BuildConfigKey(self.ConfigKey, ButtonData.Name),
+				Function = ButtonData.Function,
+				ToolTip = ButtonData.ToolTip or ButtonData.Tooltip,
+				Button = ButtonFrame,
+				NameLabel = ButtonNameLabel,
+				ActionLabel = ButtonActionLabel,
+				Module = self,
+				ControlHeight = 30
+			}
+
+			function Button:Press()
+				if self.Function then
+					InvokeTaskCallback("Button", self.Name, self.Function, self.Module)
+				end
+			end
+
+			ButtonFrame.MouseButton1Click:Connect(function()
+				Button:Press()
+			end)
+
+			ButtonFrame.MouseEnter:Connect(function()
+				ButtonFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+				ButtonActionLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+				ShowToolTip(Button.ToolTip)
+			end)
+
+			ButtonFrame.MouseLeave:Connect(function()
+				ButtonFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+				ButtonActionLabel.BackgroundColor3 = Color3.fromRGB(32, 32, 32)
+				HideToolTip()
+			end)
+
+			table.insert(self.ButtonList, Button)
+			self.Buttons[Button.Name] = Button
+			UpdateModuleLayout(self)
+			UpdateCategorySize(self.Category)
+			RefreshModuleDisplay(self)
+
+			return Button
+		end
+
+		function Module:CreateSlider(SliderData)
+			if not SliderData or type(SliderData.Name) ~= "string" or SliderData.Name == "" then
+				error(("Module '%s' requires a valid Slider name"):format(self.Name))
+			end
+
+			if self.Sliders[SliderData.Name] then
+				error(("Slider '%s' already exists in Module '%s'"):format(SliderData.Name, self.Name))
+			end
+
+			if SliderData.Function ~= nil and type(SliderData.Function) ~= "function" then
+				error(("Slider '%s' Function must be a function"):format(SliderData.Name))
+			end
+
+			local MinValue = tonumber(SliderData.Min or SliderData.Minimum or 0) or 0
+			local MaxValue = tonumber(SliderData.Max or SliderData.Maximum or 100) or 100
+			local DefaultValue = tonumber(SliderData.Default or SliderData.Value or MinValue) or MinValue
+
+			if MaxValue < MinValue then
+				MinValue, MaxValue = MaxValue, MinValue
+			end
+
+			DefaultValue = math.clamp(DefaultValue, MinValue, MaxValue)
+
+			local SliderButton = Instance.new("TextButton")
+			SliderButton.Name = SliderData.Name
+			SliderButton.Size = UDim2.new(1, 0, 0, 46)
+			SliderButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			SliderButton.BorderSizePixel = 0
+			SliderButton.AutoButtonColor = false
+			SliderButton.Text = ""
+			SliderButton.ZIndex = 4
+			SliderButton.Parent = self.OptionsHolder
+
+			local SliderNameLabel = Instance.new("TextLabel")
+			SliderNameLabel.Name = "SliderName"
+			SliderNameLabel.Size = UDim2.new(1, -76, 0, 18)
+			SliderNameLabel.Position = UDim2.new(0, 18, 0, 5)
+			SliderNameLabel.BackgroundTransparency = 1
+			SliderNameLabel.Text = SliderData.Name
+			SliderNameLabel.TextSize = 10
+			SliderNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			SliderNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			SliderNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			SliderNameLabel.Font = Enum.Font.GothamBold
+			SliderNameLabel.ZIndex = 5
+			SliderNameLabel.Parent = SliderButton
+
+			local SliderValueLabel = Instance.new("TextButton")
+			SliderValueLabel.Name = "SliderValue"
+			SliderValueLabel.Size = UDim2.new(0, 50, 0, 18)
+			SliderValueLabel.AnchorPoint = Vector2.new(1, 0)
+			SliderValueLabel.Position = UDim2.new(1, -8, 0, 5)
+			SliderValueLabel.BackgroundTransparency = 1
+			SliderValueLabel.BorderSizePixel = 0
+			SliderValueLabel.AutoButtonColor = false
+			SliderValueLabel.Text = tostring(DefaultValue)
+			SliderValueLabel.TextSize = 9
+			SliderValueLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			SliderValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+			SliderValueLabel.TextYAlignment = Enum.TextYAlignment.Center
+			SliderValueLabel.Font = Enum.Font.GothamBold
+			SliderValueLabel.ZIndex = 5
+			SliderValueLabel.Parent = SliderButton
+
+			local SliderValueInput = Instance.new("TextBox")
+			SliderValueInput.Name = "SliderValueInput"
+			SliderValueInput.Size = SliderValueLabel.Size
+			SliderValueInput.AnchorPoint = SliderValueLabel.AnchorPoint
+			SliderValueInput.Position = SliderValueLabel.Position
+			SliderValueInput.BackgroundTransparency = 1
+			SliderValueInput.BorderSizePixel = 0
+			SliderValueInput.ClearTextOnFocus = false
+			SliderValueInput.MultiLine = false
+			SliderValueInput.Visible = false
+			SliderValueInput.Text = tostring(DefaultValue)
+			SliderValueInput.PlaceholderText = tostring(DefaultValue)
+			SliderValueInput.TextSize = 9
+			SliderValueInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+			SliderValueInput.TextXAlignment = Enum.TextXAlignment.Right
+			SliderValueInput.TextYAlignment = Enum.TextYAlignment.Center
+			SliderValueInput.Font = Enum.Font.GothamBold
+			SliderValueInput.ZIndex = 6
+			SliderValueInput.Parent = SliderButton
+
+			local SliderTrack = Instance.new("Frame")
+			SliderTrack.Name = "SliderTrack"
+			SliderTrack.Size = UDim2.new(1, -24, 0, 4)
+			SliderTrack.Position = UDim2.new(0, 12, 0, 31)
+			SliderTrack.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+			SliderTrack.BorderSizePixel = 0
+			SliderTrack.ZIndex = 5
+			SliderTrack.Parent = SliderButton
+
+			local SliderFill = Instance.new("Frame")
+			SliderFill.Name = "SliderFill"
+			SliderFill.Size = UDim2.new(0, 0, 1, 0)
+			SliderFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			SliderFill.BorderSizePixel = 0
+			SliderFill.ZIndex = 6
+			SliderFill.Parent = SliderTrack
+
+			local SliderKnob = Instance.new("Frame")
+			SliderKnob.Name = "SliderKnob"
+			SliderKnob.Size = UDim2.new(0, 8, 0, 8)
+			SliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+			SliderKnob.Position = UDim2.new(0, 0, 0.5, 0)
+			SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			SliderKnob.BorderSizePixel = 0
+			SliderKnob.ZIndex = 7
+			SliderKnob.Parent = SliderTrack
+
+			local SliderKnobCorner = Instance.new("UICorner")
+			SliderKnobCorner.CornerRadius = UDim.new(1, 0)
+			SliderKnobCorner.Parent = SliderKnob
+
+			local Slider = {
+				Name = SliderData.Name,
+				ConfigKey = BuildConfigKey(self.ConfigKey, SliderData.Name),
+				Min = MinValue,
+				Max = MaxValue,
+				Value = DefaultValue,
+				Function = SliderData.Function,
+				Suffix = SliderData.Suffix,
+				ToolTip = SliderData.ToolTip or SliderData.Tooltip,
+				Button = SliderButton,
+				NameLabel = SliderNameLabel,
+				ValueLabel = SliderValueLabel,
+				ValueInput = SliderValueInput,
+				Track = SliderTrack,
+				Fill = SliderFill,
+				Knob = SliderKnob,
+				Module = self,
+				ControlHeight = 46,
+				EditingValue = false,
+				ApplyMousePosition = nil
+			}
+
+			local function GetSliderValueText(value)
+				if type(Slider.Suffix) == "function" then
+					local ok, suffixValue = pcall(Slider.Suffix, value)
+					if ok and suffixValue ~= nil and tostring(suffixValue) ~= "" then
+						return ("%s %s"):format(tostring(value), tostring(suffixValue))
+					end
+				elseif Slider.Suffix ~= nil and tostring(Slider.Suffix) ~= "" then
+					return ("%s %s"):format(tostring(value), tostring(Slider.Suffix))
+				end
+
+				return tostring(value)
+			end
+
+			local function SetSliderVisuals(value)
+				local Alpha = 0
+				if Slider.Max > Slider.Min then
+					Alpha = math.clamp((value - Slider.Min) / (Slider.Max - Slider.Min), 0, 1)
+				end
+
+				Slider.ValueLabel.Text = GetSliderValueText(value)
+				Slider.ValueInput.Text = tostring(value)
+				Slider.ValueInput.PlaceholderText = tostring(value)
+				Slider.Fill.Size = UDim2.new(Alpha, 0, 1, 0)
+				Slider.Knob.Position = UDim2.new(Alpha, 0, 0.5, 0)
+			end
+
+			function Slider:SetValue(value, skipCallback, options)
+				options = options or {}
+				value = math.floor((tonumber(value) or self.Value) + 0.5)
+				if options.AllowOverflow then
+					value = math.max(value, self.Min)
+				else
+					value = math.clamp(value, self.Min, self.Max)
+				end
+				if self.Value == value then
+					SetSliderVisuals(value)
+					if not skipCallback and options.ForceCallback and self.Function then
+						InvokeTaskCallback("Slider", self.Name, self.Function, self.Value)
+					end
+					return
+				end
+
+				self.Value = value
+				SetSliderVisuals(value)
+
+				if not options.SkipConfig then
+					SetConfigValue("Slider", self.ConfigKey, self.Value)
+				end
+
+				if not skipCallback and self.Function then
+					InvokeTaskCallback("Slider", self.Name, self.Function, self.Value)
+				end
+			end
+
+			local function SetFromMousePosition(mouseX)
+				local Alpha = math.clamp((mouseX - Slider.Track.AbsolutePosition.X) / Slider.Track.AbsoluteSize.X, 0, 1)
+				local value = Slider.Min + ((Slider.Max - Slider.Min) * Alpha)
+				Slider:SetValue(value)
+			end
+
+			local function EndValueEdit(shouldApply)
+				if not Slider.EditingValue then
+					return
+				end
+
+				Slider.EditingValue = false
+
+				if shouldApply then
+					local enteredValue = tonumber(Slider.ValueInput.Text)
+					if enteredValue ~= nil then
+						Slider:SetValue(enteredValue, false, {
+							AllowOverflow = true
+						})
+					else
+						SetSliderVisuals(Slider.Value)
+					end
+				else
+					SetSliderVisuals(Slider.Value)
+				end
+
+				Slider.ValueInput.Visible = false
+				Slider.ValueLabel.Visible = true
+			end
+
+			local function SubmitValueEdit()
+				if not Slider.EditingValue then
+					return
+				end
+
+				EndValueEdit(true)
+			end
+
+			local function BeginValueEdit()
+				ActiveSlider = nil
+				Slider.EditingValue = true
+				Slider.ValueInput.Text = tostring(Slider.Value)
+				Slider.ValueInput.PlaceholderText = tostring(Slider.Value)
+				Slider.ValueLabel.Visible = false
+				Slider.ValueInput.Visible = true
+				Slider.ValueInput:CaptureFocus()
+				Slider.ValueInput.CursorPosition = #Slider.ValueInput.Text + 1
+			end
+
+			SliderButton.MouseButton1Down:Connect(function(mouseX)
+				if Slider.EditingValue then
+					return
+				end
+				ActiveSlider = Slider
+				SetFromMousePosition(mouseX)
+			end)
+
+			SliderValueLabel.MouseButton1Click:Connect(function()
+				BeginValueEdit()
+			end)
+
+			SliderValueInput.InputBegan:Connect(function(InputObject)
+				if InputObject.UserInputType ~= Enum.UserInputType.Keyboard then
+					return
+				end
+
+				if InputObject.KeyCode == Enum.KeyCode.Return or InputObject.KeyCode == Enum.KeyCode.KeypadEnter then
+					SubmitValueEdit()
+					Slider.ValueInput:ReleaseFocus()
+				elseif InputObject.KeyCode == Enum.KeyCode.Escape then
+					EndValueEdit(false)
+					Slider.ValueInput:ReleaseFocus()
+				end
+			end)
+
+			SliderButton.MouseEnter:Connect(function()
+				ShowToolTip(Slider.ToolTip)
+			end)
+
+			SliderButton.MouseLeave:Connect(function()
+				HideToolTip()
+			end)
+
+			SliderValueInput.FocusLost:Connect(function(enterPressed)
+				EndValueEdit(enterPressed or Slider.ValueInput.Text ~= tostring(Slider.Value))
+			end)
+
+			Slider.ApplyMousePosition = SetFromMousePosition
+
+			table.insert(self.SliderList, Slider)
+			self.Sliders[Slider.Name] = Slider
+			UpdateModuleLayout(self)
+			UpdateCategorySize(self.Category)
+			Slider:SetValue(RegisterConfigValue("Slider", Slider.ConfigKey, DefaultValue), false, {
+				SkipConfig = true,
+				ForceCallback = true,
+				AllowOverflow = true
+			})
+
+			return Slider
+		end
+
+		function Module:CreateTextBox(TextBoxData)
+			if not TextBoxData or type(TextBoxData.Name) ~= "string" or TextBoxData.Name == "" then
+				error(("Module '%s' requires a valid TextBox name"):format(self.Name))
+			end
+
+			if self.TextBoxes[TextBoxData.Name] then
+				error(("TextBox '%s' already exists in Module '%s'"):format(TextBoxData.Name, self.Name))
+			end
+
+			if TextBoxData.Function ~= nil and type(TextBoxData.Function) ~= "function" then
+				error(("TextBox '%s' Function must be a function"):format(TextBoxData.Name))
+			end
+
+			local DefaultValue = TextBoxData.Default
+			if DefaultValue == nil then
+				DefaultValue = TextBoxData.Value
+			end
+			DefaultValue = tostring(DefaultValue or "")
+
+			local TextBoxButton = Instance.new("TextButton")
+			TextBoxButton.Name = TextBoxData.Name
+			TextBoxButton.Size = UDim2.new(1, 0, 0, 30)
+			TextBoxButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			TextBoxButton.BorderSizePixel = 0
+			TextBoxButton.AutoButtonColor = false
+			TextBoxButton.Text = ""
+			TextBoxButton.ZIndex = 4
+			TextBoxButton.Parent = self.OptionsHolder
+
+			local TextBoxNameLabel = Instance.new("TextLabel")
+			TextBoxNameLabel.Name = "TextBoxName"
+			TextBoxNameLabel.Size = UDim2.new(1, -140, 1, 0)
+			TextBoxNameLabel.Position = UDim2.new(0, 18, 0, 0)
+			TextBoxNameLabel.BackgroundTransparency = 1
+			TextBoxNameLabel.Text = TextBoxData.Name
+			TextBoxNameLabel.TextSize = 10
+			TextBoxNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			TextBoxNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			TextBoxNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			TextBoxNameLabel.Font = Enum.Font.GothamBold
+			TextBoxNameLabel.ZIndex = 5
+			TextBoxNameLabel.Parent = TextBoxButton
+
+			local TextBoxInput = Instance.new("TextBox")
+			TextBoxInput.Name = "TextBoxInput"
+			TextBoxInput.Size = UDim2.new(0, 112, 0, 18)
+			TextBoxInput.AnchorPoint = Vector2.new(1, 0.5)
+			TextBoxInput.Position = UDim2.new(1, -8, 0.5, 0)
+			TextBoxInput.BackgroundTransparency = 1
+			TextBoxInput.BorderSizePixel = 0
+			TextBoxInput.ClearTextOnFocus = false
+			TextBoxInput.MultiLine = false
+			TextBoxInput.Text = DefaultValue
+			TextBoxInput.PlaceholderText = tostring(TextBoxData.Placeholder or "")
+			TextBoxInput.TextSize = 9
+			TextBoxInput.TextColor3 = Color3.fromRGB(170, 170, 170)
+			TextBoxInput.PlaceholderColor3 = Color3.fromRGB(110, 110, 110)
+			TextBoxInput.TextXAlignment = Enum.TextXAlignment.Right
+			TextBoxInput.TextYAlignment = Enum.TextYAlignment.Center
+			TextBoxInput.Font = Enum.Font.GothamBold
+			TextBoxInput.ZIndex = 6
+			TextBoxInput.Parent = TextBoxButton
+
+			local TextBox = {
+				Name = TextBoxData.Name,
+				ConfigKey = BuildConfigKey(self.ConfigKey, TextBoxData.Name),
+				Value = DefaultValue,
+				Function = TextBoxData.Function,
+				ToolTip = TextBoxData.ToolTip or TextBoxData.Tooltip,
+				Placeholder = tostring(TextBoxData.Placeholder or ""),
+				Button = TextBoxButton,
+				NameLabel = TextBoxNameLabel,
+				Input = TextBoxInput,
+				Module = self,
+				ControlHeight = 30
+			}
+
+			local function ApplyTextBoxVisuals(Value)
+				local DisplayValue = tostring(Value or "")
+				TextBox.Input.Text = DisplayValue
+				TextBox.Input.PlaceholderText = TextBox.Placeholder
+			end
+
+			function TextBox:SetValue(Value, EnterPressed, SkipCallback, Options)
+				Options = Options or {}
+				Value = tostring(Value or "")
+
+				if self.Value == Value then
+					ApplyTextBoxVisuals(Value)
+					if not SkipCallback and self.Function and (Options.ForceCallback or EnterPressed) then
+						InvokeTaskCallback("TextBox", self.Name, self.Function, not not EnterPressed)
+					end
+					return
+				end
+
+				self.Value = Value
+				ApplyTextBoxVisuals(Value)
+
+				if not Options.SkipConfig then
+					SetConfigValue("TextBox", self.ConfigKey, self.Value)
+				end
+
+				if not SkipCallback and self.Function then
+					InvokeTaskCallback("TextBox", self.Name, self.Function, not not EnterPressed)
+				end
+			end
+
+			function TextBox:CaptureFocus()
+				self.Input:CaptureFocus()
+				self.Input.CursorPosition = #self.Input.Text + 1
+			end
+
+			TextBoxButton.MouseButton1Click:Connect(function()
+				TextBox:CaptureFocus()
+			end)
+
+			TextBoxButton.MouseEnter:Connect(function()
+				ShowToolTip(TextBox.ToolTip)
+			end)
+
+			TextBoxButton.MouseLeave:Connect(function()
+				HideToolTip()
+			end)
+
+			TextBoxInput.MouseEnter:Connect(function()
+				ShowToolTip(TextBox.ToolTip)
+			end)
+
+			TextBoxInput.MouseLeave:Connect(function()
+				HideToolTip()
+			end)
+
+			TextBoxInput.FocusLost:Connect(function(EnterPressed)
+				TextBox:SetValue(TextBoxInput.Text, EnterPressed, false)
+			end)
+
+			table.insert(self.TextBoxList, TextBox)
+			self.TextBoxes[TextBox.Name] = TextBox
+			UpdateModuleLayout(self)
+			UpdateCategorySize(self.Category)
+			RefreshModuleDisplay(self)
+			TextBox:SetValue(RegisterConfigValue("TextBox", TextBox.ConfigKey, DefaultValue), false, true, {
+				SkipConfig = true
+			})
+
+			return TextBox
+		end
+
+		function Module:CreateDropdown(DropdownData)
+			if not DropdownData or type(DropdownData.Name) ~= "string" or DropdownData.Name == "" then
+				error(("Module '%s' requires a valid Dropdown name"):format(self.Name))
+			end
+
+			if self.Dropdowns[DropdownData.Name] then
+				error(("Dropdown '%s' already exists in Module '%s'"):format(DropdownData.Name, self.Name))
+			end
+
+			if DropdownData.Function ~= nil and type(DropdownData.Function) ~= "function" then
+				error(("Dropdown '%s' Function must be a function"):format(DropdownData.Name))
+			end
+
+			if type(DropdownData.List) ~= "table" or #DropdownData.List == 0 then
+				error(("Dropdown '%s' requires a non-empty List"):format(DropdownData.Name))
+			end
+
+			local DropdownContainer = Instance.new("Frame")
+			DropdownContainer.Name = DropdownData.Name .. "_Dropdown"
+			DropdownContainer.Size = UDim2.new(1, 0, 0, 30)
+			DropdownContainer.BackgroundTransparency = 1
+			DropdownContainer.BorderSizePixel = 0
+			DropdownContainer.ZIndex = 4
+			DropdownContainer.Parent = self.OptionsHolder
+
+			local DropdownButton = Instance.new("TextButton")
+			DropdownButton.Name = DropdownData.Name
+			DropdownButton.Size = UDim2.new(1, 0, 0, 30)
+			DropdownButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			DropdownButton.BorderSizePixel = 0
+			DropdownButton.AutoButtonColor = false
+			DropdownButton.Text = ""
+			DropdownButton.ZIndex = 4
+			DropdownButton.Parent = DropdownContainer
+
+			local DropdownNameLabel = Instance.new("TextLabel")
+			DropdownNameLabel.Name = "DropdownName"
+			DropdownNameLabel.Size = UDim2.new(0.5, -18, 1, 0)
+			DropdownNameLabel.Position = UDim2.new(0, 18, 0, 0)
+			DropdownNameLabel.BackgroundTransparency = 1
+			DropdownNameLabel.Text = DropdownData.Name
+			DropdownNameLabel.TextSize = 10
+			DropdownNameLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+			DropdownNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			DropdownNameLabel.TextYAlignment = Enum.TextYAlignment.Center
+			DropdownNameLabel.Font = Enum.Font.GothamBold
+			DropdownNameLabel.ZIndex = 5
+			DropdownNameLabel.Parent = DropdownButton
+
+			local DropdownValueLabel = Instance.new("TextLabel")
+			DropdownValueLabel.Name = "DropdownValue"
+			DropdownValueLabel.Size = UDim2.new(0.5, -34, 1, 0)
+			DropdownValueLabel.AnchorPoint = Vector2.new(1, 0)
+			DropdownValueLabel.Position = UDim2.new(1, -24, 0, 0)
+			DropdownValueLabel.BackgroundTransparency = 1
+			DropdownValueLabel.Text = ""
+			DropdownValueLabel.TextSize = 9
+			DropdownValueLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			DropdownValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+			DropdownValueLabel.TextYAlignment = Enum.TextYAlignment.Center
+			DropdownValueLabel.Font = Enum.Font.GothamBold
+			DropdownValueLabel.ZIndex = 5
+			DropdownValueLabel.Parent = DropdownButton
+
+			local DropdownArrow = Instance.new("TextButton")
+			DropdownArrow.Name = "DropdownArrow"
+			DropdownArrow.Size = UDim2.new(0, 18, 1, 0)
+			DropdownArrow.AnchorPoint = Vector2.new(1, 0)
+			DropdownArrow.Position = UDim2.new(1, -6, 0, 0)
+			DropdownArrow.BackgroundTransparency = 1
+			DropdownArrow.AutoButtonColor = false
+			DropdownArrow.Text = ">"
+			DropdownArrow.TextSize = 10
+			DropdownArrow.TextColor3 = Color3.fromRGB(170, 170, 170)
+			DropdownArrow.Font = Enum.Font.GothamBold
+			DropdownArrow.ZIndex = 6
+			DropdownArrow.Parent = DropdownButton
+
+			local ListHolder = Instance.new("Frame")
+			ListHolder.Name = "ListHolder"
+			ListHolder.Size = UDim2.new(1, 0, 0, 0)
+			ListHolder.Position = UDim2.new(0, 0, 0, 30)
+			ListHolder.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+			ListHolder.BackgroundTransparency = 0
+			ListHolder.BorderSizePixel = 0
+			ListHolder.ClipsDescendants = true
+			ListHolder.ZIndex = 4
+			ListHolder.Parent = DropdownContainer
+
+			local ListLayout = Instance.new("UIListLayout")
+			ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			ListLayout.Padding = UDim.new(0, 0)
+			ListLayout.Parent = ListHolder
+
+			local Dropdown = {
+				Name = DropdownData.Name,
+				ConfigKey = BuildConfigKey(self.ConfigKey, DropdownData.Name),
+				List = {},
+				Value = nil,
+				Expanded = false,
+				Function = DropdownData.Function,
+				ToolTip = DropdownData.ToolTip or DropdownData.Tooltip,
+				Container = DropdownContainer,
+				Button = DropdownButton,
+				NameLabel = DropdownNameLabel,
+				ValueLabel = DropdownValueLabel,
+				ArrowButton = DropdownArrow,
+				ListHolder = ListHolder,
+				Options = {},
+				Module = self,
+				ControlHeight = 30,
+				Tweens = {}
+			}
+
+			for _, option in ipairs(DropdownData.List) do
+				table.insert(Dropdown.List, tostring(option))
+			end
+
+			local function UpdateDropdownDisplay(Animate)
+				Dropdown.ValueLabel.Text = tostring(Dropdown.Value or "")
+				Dropdown.ArrowButton.Text = Dropdown.Expanded and "v" or ">"
+
+				local OptionHeight = 28
+				local TotalHeight = 0
+				if Dropdown.Expanded and #Dropdown.Options > 0 then
+					TotalHeight = #Dropdown.Options * OptionHeight
+				end
+
+				if Animate then
+					TweenYSize(Dropdown.ListHolder, TotalHeight, Dropdown.Tweens, "ListHolder")
+					TweenYSize(Dropdown.Container, 30 + TotalHeight, Dropdown.Tweens, "Container")
+				else
+					Dropdown.ListHolder.Size = UDim2.new(1, 0, 0, TotalHeight)
+					Dropdown.Container.Size = UDim2.new(1, 0, 0, 30 + TotalHeight)
+				end
+
+				Dropdown.ControlHeight = 30 + TotalHeight
+
+				for _, OptionButton in ipairs(Dropdown.Options) do
+					local isSelected = OptionButton:GetAttribute("OptionValue") == Dropdown.Value
+					OptionButton.BackgroundColor3 = isSelected and Color3.fromRGB(32, 32, 32) or Color3.fromRGB(22, 22, 22)
+					local OptionLabel = OptionButton:FindFirstChild("OptionLabel")
+					if OptionLabel then
+						OptionLabel.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 190, 190)
+					end
+				end
+			end
+
+			function Dropdown:SetExpanded(state)
+				self.Expanded = not not state
+				UpdateDropdownDisplay(true)
+				UpdateModuleLayout(self.Module)
+				UpdateCategorySize(self.Module.Category)
+				RefreshModuleDisplay(self.Module)
+			end
+
+			function Dropdown:SetValue(value, skipCallback, options)
+				options = options or {}
+				value = tostring(value)
+
+				local matchedValue = nil
+				for _, OptionValue in ipairs(self.List) do
+					if OptionValue == value then
+						matchedValue = OptionValue
+						break
+					end
+				end
+
+				if matchedValue == nil then
+					return
+				end
+
+				if self.Value == matchedValue then
+					UpdateDropdownDisplay(false)
+					if not skipCallback and options.ForceCallback and self.Function then
+						InvokeTaskCallback("Dropdown", self.Name, self.Function, self.Value)
+					end
+					return
+				end
+
+				self.Value = matchedValue
+				UpdateDropdownDisplay(false)
+
+				if not options.SkipConfig then
+					SetConfigValue("Dropdown", self.ConfigKey, self.Value)
+				end
+
+				if not skipCallback and self.Function then
+					InvokeTaskCallback("Dropdown", self.Name, self.Function, self.Value)
+				end
+			end
+
+			for _, OptionValue in ipairs(Dropdown.List) do
+				local OptionButton = Instance.new("TextButton")
+				OptionButton.Name = OptionValue
+				OptionButton.Size = UDim2.new(1, 0, 0, 28)
+				OptionButton.Position = UDim2.new(0, 0, 0, 0)
+				OptionButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+				OptionButton.BorderSizePixel = 0
+				OptionButton.AutoButtonColor = false
+				OptionButton.Text = ""
+				OptionButton.ZIndex = 5
+				OptionButton:SetAttribute("OptionValue", OptionValue)
+				OptionButton.Parent = Dropdown.ListHolder
+
+				local OptionLabel = Instance.new("TextLabel")
+				OptionLabel.Name = "OptionLabel"
+				OptionLabel.Size = UDim2.new(1, -36, 1, 0)
+				OptionLabel.Position = UDim2.new(0, 18, 0, 0)
+				OptionLabel.BackgroundTransparency = 1
+				OptionLabel.Text = OptionValue
+				OptionLabel.TextSize = 9
+				OptionLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+				OptionLabel.TextXAlignment = Enum.TextXAlignment.Left
+				OptionLabel.TextYAlignment = Enum.TextYAlignment.Center
+				OptionLabel.Font = Enum.Font.GothamBold
+				OptionLabel.ZIndex = 6
+				OptionLabel.Parent = OptionButton
+
+				OptionButton.MouseButton1Click:Connect(function()
+					Dropdown:SetValue(OptionValue)
+					Dropdown:SetExpanded(false)
+				end)
+
+				table.insert(Dropdown.Options, OptionButton)
+			end
+
+			DropdownButton.MouseButton2Click:Connect(function()
+				Dropdown:SetExpanded(not Dropdown.Expanded)
+			end)
+
+			DropdownArrow.MouseButton2Click:Connect(function()
+				Dropdown:SetExpanded(not Dropdown.Expanded)
+			end)
+
+			DropdownButton.MouseEnter:Connect(function()
+				ShowToolTip(Dropdown.ToolTip)
+			end)
+
+			DropdownButton.MouseLeave:Connect(function()
+				HideToolTip()
+			end)
+
+			table.insert(self.DropdownList, Dropdown)
+			self.Dropdowns[Dropdown.Name] = Dropdown
+			UpdateDropdownDisplay(false)
+			UpdateModuleLayout(self)
+			UpdateCategorySize(self.Category)
+			RefreshModuleDisplay(self)
+
+			local DefaultValue = tostring(DropdownData.Default or Dropdown.List[1])
+			Dropdown:SetValue(RegisterConfigValue("Dropdown", Dropdown.ConfigKey, DefaultValue), false, {
+				SkipConfig = true,
+				ForceCallback = true
+			})
+
+			return Dropdown
+		end
+
+		if type(ModuleData.Toggles) == "table" then
+			for _, ToggleData in ipairs(ModuleData.Toggles) do
+				Module:CreateToggle(ToggleData)
+			end
+		end
+
+		if type(ModuleData.Buttons) == "table" then
+			for _, ButtonData in ipairs(ModuleData.Buttons) do
+				Module:CreateButton(ButtonData)
+			end
+		end
+
+		if type(ModuleData.Sliders) == "table" then
+			for _, SliderData in ipairs(ModuleData.Sliders) do
+				Module:CreateSlider(SliderData)
+			end
+		end
+
+		if type(ModuleData.Dropdowns) == "table" then
+			for _, DropdownData in ipairs(ModuleData.Dropdowns) do
+				Module:CreateDropdown(DropdownData)
+			end
+		end
+
+		if type(ModuleData.TextBoxes) == "table" then
+			for _, TextBoxData in ipairs(ModuleData.TextBoxes) do
+				Module:CreateTextBox(TextBoxData)
+			end
+		end
+
+		ModuleButton.MouseButton1Click:Connect(function()
+			Module:Toggle()
+		end)
+
+		ModuleButton.MouseEnter:Connect(function()
+			ShowToolTip(Module.ToolTip)
+		end)
+
+		ModuleButton.MouseLeave:Connect(function()
+			HideToolTip()
+		end)
+
+		ModuleButton.MouseButton2Click:Connect(function()
+			if GetModuleControlCount(Module) > 0 then
+				Module:SetExpanded(not Module.Expanded)
+			end
+		end)
+
+		KeybindButton.MouseButton1Click:Connect(function()
+			if ActiveKeybindModule and ActiveKeybindModule ~= Module then
+				ActiveKeybindModule.WaitingForKeybind = false
+				RefreshModuleDisplay(ActiveKeybindModule)
+			end
+
+			ActiveKeybindModule = Module
+			Module:BeginKeybindCapture()
+		end)
+
+		ArrowButton.MouseButton1Click:Connect(function()
+			Module:SetExpanded(not Module.Expanded)
+		end)
+
+		table.insert(self.ModuleList, Module)
+		self.Modules[Module.Name] = Module
+		TaskAPI.Modules[Module.Name] = Module
+
+		SortCategoryModules(self)
+		UpdateModuleLayout(Module)
+		UpdateCategorySize(self)
+		RefreshModuleDisplay(Module)
+
+		Module:SetKeybind(RegisterConfigValue("Keybind", Module.ConfigKey, nil), {
+			SkipConfig = true
+		})
+
+		local SavedModuleState = RegisterConfigValue("Module", Module.ConfigKey, false)
+		if SavedModuleState then
+			task.defer(function()
+				if Module.Button and Module.Button.Parent then
+					Module:SetEnabled(true, {
+						SkipConfig = true,
+						SkipNotify = true
+					})
+				end
+			end)
+		end
+
+		return Module
+	end
+
+		CategoryFrame.InputBegan:Connect(function(Input)
+			if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+				return
+			end
+
+			ActiveCategoryDrag = {
+				Category = Category,
+				ContainerFrame = ContainerFrame,
+				DragStart = Input.Position,
+				StartPosition = ContainerFrame.Position
+			}
+		end)
+
+	self.Categories[Category.Name] = Category
+	table.insert(self.CategoryList, Category)
+	UpdateCategorySize(Category)
+
+	return Category
+end
+
+TrackTaskConnection(InputService.InputBegan:Connect(function(Input, GameProcessed)
+	if ActiveKeybindModule and ActiveKeybindModule.Button and ActiveKeybindModule.Button.Parent then
+		if Input.UserInputType == Enum.UserInputType.Keyboard then
+			if Input.KeyCode == Enum.KeyCode.Escape or Input.KeyCode == Enum.KeyCode.Backspace then
+				ActiveKeybindModule:SetKeybind(nil)
+			elseif Input.KeyCode ~= Enum.KeyCode.Unknown then
+				ActiveKeybindModule:SetKeybind(Input.KeyCode.Name)
+			end
+
+			ActiveKeybindModule = nil
+		end
+		return
+	elseif ActiveKeybindModule then
+		ActiveKeybindModule = nil
+	end
+
+	if GameProcessed then
+		return
+	end
+
+	if Input.KeyCode == Enum.KeyCode.RightShift then
+		ScreenGui.Enabled = not ScreenGui.Enabled
+		BlurEffect.Enabled = ScreenGui.Enabled
+		if not ScreenGui.Enabled then
+			HideToolTip()
+		end
+		return
+	end
+
+	if Input.UserInputType == Enum.UserInputType.Keyboard and not InputService:GetFocusedTextBox() then
+		if IsReservedModuleKeybind(Input) then
+			return
+		end
+
+		for _, Module in pairs(TaskAPI.Modules) do
+			if type(Module) == "table" and Module.Keybind and Module.Keybind == Input.KeyCode.Name then
+				if Module.Button and Module.Button.Parent then
+					Module:Toggle()
+				end
+			end
+		end
+	end
+end))
+
+TrackTaskConnection(InputService.InputChanged:Connect(function(Input)
+	if Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+		return
+	end
+
+	if ActiveToolTipText then
+		UpdateToolTipPosition(Input.Position)
+	end
+
+	if ActiveSlider and type(ActiveSlider.ApplyMousePosition) == "function" then
+		ActiveSlider.ApplyMousePosition(Input.Position.X)
+	end
+
+	if ActiveCategoryDrag then
+		local Delta = Input.Position - ActiveCategoryDrag.DragStart
+		local StartPosition = ActiveCategoryDrag.StartPosition
+		local ContainerFrame = ActiveCategoryDrag.ContainerFrame
+		local Category = ActiveCategoryDrag.Category
+
+		ContainerFrame.Position = UDim2.new(
+			StartPosition.X.Scale,
+			StartPosition.X.Offset + Delta.X,
+			StartPosition.Y.Scale,
+			StartPosition.Y.Offset + Delta.Y
+		)
+		Category.Position = ContainerFrame.Position
+	end
+end))
+
+TrackTaskConnection(InputService.InputEnded:Connect(function(Input)
+	if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+		ActiveSlider = nil
+		if ActiveCategoryDrag then
+			ActiveCategoryDrag.Category.Position = ActiveCategoryDrag.ContainerFrame.Position
+			ActiveCategoryDrag = nil
+		end
+	end
+end))
+
+function TaskAPI:Shutdown()
+	ActiveSlider = nil
+	ActiveCategoryDrag = nil
+
+	if type(self.Connections) == "table" then
+		for index = #self.Connections, 1, -1 do
+			local connection = self.Connections[index]
+			if typeof(connection) == "RBXScriptConnection" and connection.Connected then
+				connection:Disconnect()
+			end
+			table.remove(self.Connections, index)
+		end
+	end
+
+	ShutdownAPI(self)
+end
+
+return TaskAPI
