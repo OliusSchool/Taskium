@@ -18,7 +18,6 @@ getgenv().Taskium = Taskium
 Taskium.Libraries = Taskium.Libraries or {}
 
 local FileCache = {}
-local TaskiumCommit = nil
 
 local function readCachedCommit()
     if not isfile(commitFile) then
@@ -27,8 +26,9 @@ local function readCachedCommit()
 
     local value = readfile(commitFile)
     value = tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    local sha = value:match("([0-9a-fA-F]+)$")
-    return sha and #sha == 40 and sha or ""
+    if #value == 40 then return value end
+    if value == "main" then return "main" end
+    return ""
 end
 
 local function executeFile(path)
@@ -43,7 +43,7 @@ local function executeFile(path)
     local localPath = mainFolder .. "/" .. repoP
 
     if FileCache[localPath] ~= nil then
-        return FileCache[localPath]
+        return FileCache[localPath] == false and nil or FileCache[localPath]
     end
 
     local source = ""
@@ -60,6 +60,8 @@ local function executeFile(path)
 
         if not isSynced then
             warn("Blocked download outside synced folders: " .. repoP)
+            FileCache[localPath] = false
+            return nil
         else
             local parentFolder = repoP:match("^(.*)/[^/]+$")
             if parentFolder then
@@ -70,12 +72,14 @@ local function executeFile(path)
                 end
             end
 
-            local commit = TaskiumCommit or readCachedCommit()
+            local commit = readCachedCommit()
             if commit == "" then commit = "main" end
 
             local ok, body = pcall(game.HttpGet, game, rawUrl .. commit .. "/" .. repoP, true)
             if not ok or body == "404: Not Found" then
                 warn("Failed to download " .. repoP .. ": " .. tostring(body))
+                FileCache[localPath] = false
+                return nil
             else
                 writefile(localPath, repoP:find("%.lua$") and (cacheMarker .. body) or body)
                 source = body
@@ -84,24 +88,24 @@ local function executeFile(path)
     end
 
     if source == "" then
+        FileCache[localPath] = false
         return nil
     end
 
     local finalSource = source:sub(1, #cacheMarker) == cacheMarker and source:sub(#cacheMarker + 1) or source
     local chunk, compileError = loadstring(finalSource, "@" .. localPath)
     if not chunk then
+        FileCache[localPath] = false
         return warn("Failed to load " .. localPath .. ": " .. tostring(compileError))
     end
 
     local ok, result = pcall(chunk)
     if not ok then
+        FileCache[localPath] = false
         return warn("Failed to run " .. localPath .. ": " .. tostring(result))
     end
 
-    if result ~= nil then
-        FileCache[localPath] = result
-    end
-
+    FileCache[localPath] = result or false
     return result
 end
 
@@ -167,56 +171,15 @@ function Taskium.LoadLibrary(name)
     return library
 end
 
-function Taskium.SyncTaskiumFiles()
-    if not isfolder(mainFolder) then makefolder(mainFolder) end
-    for _, folder in ipairs(syncFolders) do
-        if not isfolder(mainFolder .. "/" .. folder) then makefolder(mainFolder .. "/" .. folder) end
-    end
-
-    local commit = ""
-    if TaskiumCommit ~= nil then
-        commit = TaskiumCommit
-    else
-        local ok, body = pcall(game.HttpGet, game, commitApiUrl, true)
-        if ok then
-            local decodedOk, decoded = pcall(HttpService.JSONDecode, HttpService, body)
-            local sha = decodedOk and type(decoded) == "table" and decoded.sha
-            if type(sha) == "string" and #sha == 40 then
-                TaskiumCommit = sha
-                commit = sha
-            end
-        end
-
-        if commit == "" then
-            ok, body = pcall(game.HttpGet, game, repoUrl, true)
-            local index = ok and body and body:find("currentOid")
-            local sha = index and body:sub(index + 13, index + 52) or ""
-            if #sha == 40 then
-                TaskiumCommit = sha
-                commit = sha
-            end
-        end
-
-        if commit == "" then
-            commit = "main"
-            TaskiumCommit = "main"
-        end
-    end
-
-    if readCachedCommit() == commit and commit ~= "main" then
-        return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
-    end
-
+local function doSync(commit)
+    if commit == "" then return false end
+    
     local ok, body = pcall(game.HttpGet, game, treeApiUrl .. commit .. "?recursive=1", true)
-    if not ok then
-        warn("Failed to list repository tree: " .. tostring(body))
-        return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
-    end
+    if not ok then return false end
 
     local decodedOk, decoded = pcall(HttpService.JSONDecode, HttpService, body)
     if not decodedOk or type(decoded) ~= "table" or type(decoded.tree) ~= "table" or decoded.message then
-        warn("Failed to decode repository tree: " .. tostring(decoded and decoded.message or decoded))
-        return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
+        return false
     end
 
     local directories = {}
@@ -243,28 +206,6 @@ function Taskium.SyncTaskiumFiles()
     table.sort(directories)
     table.sort(files)
 
-    for _, folder in ipairs(syncFolders) do
-        local stack = { mainFolder .. "/" .. folder }
-        while #stack > 0 do
-            local currPath = table.remove(stack)
-            if isfolder(currPath) then
-                local children = listfiles(currPath)
-                if type(children) == "table" then
-                    for _, child in ipairs(children) do
-                        if isfolder(child) then
-                            table.insert(stack, child)
-                        elseif isfile(child) then
-                            local content = readfile(child) or ""
-                            if content:sub(1, #cacheMarker) == cacheMarker then
-                                if delfile then delfile(child) else writefile(child, "") end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
     for _, directory in ipairs(directories) do
         if not isfolder(mainFolder .. "/" .. directory) then makefolder(mainFolder .. "/" .. directory) end
     end
@@ -272,7 +213,7 @@ function Taskium.SyncTaskiumFiles()
     local success = true
     local remaining = #files
     local fileIndex = 1
-    local MAX_WORKERS = 10 -- Limits concurrency to prevent executor HTTP freezing
+    local MAX_WORKERS = 10
 
     local function downloadWorker()
         while true do
@@ -321,18 +262,114 @@ function Taskium.SyncTaskiumFiles()
         table.insert(workers, task.spawn(downloadWorker))
     end
 
-    -- Wait for all concurrent downloads to finish
     while remaining > 0 do
         task.wait(0.1)
     end
 
     if success then
+        -- Only delete old files if the new sync was 100% successful
+        local validPaths = {}
+        for _, f in ipairs(files) do validPaths[f] = true end
+
+        for _, folder in ipairs(syncFolders) do
+            local stack = { mainFolder .. "/" .. folder }
+            while #stack > 0 do
+                local currPath = table.remove(stack)
+                if isfolder(currPath) then
+                    local children = listfiles(currPath)
+                    if type(children) == "table" then
+                        for _, child in ipairs(children) do
+                            if isfolder(child) then
+                                table.insert(stack, child)
+                            elseif isfile(child) then
+                                local content = readfile(child) or ""
+                                if content:sub(1, #cacheMarker) == cacheMarker then
+                                    local repoP = child:sub(#mainFolder + 2)
+                                    if not validPaths[repoP] then
+                                        if delfile then delfile(child) else writefile(child, "") end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
         writefile(commitFile, commit)
+        return true
     else
-        warn("Taskium files did not fully sync. The old commit marker was kept so this can retry next run.")
+        warn("Taskium files did not fully sync. Old files preserved to prevent corruption.")
+        return false
+    end
+end
+
+function Taskium.SyncTaskiumFiles()
+    if not isfolder(mainFolder) then makefolder(mainFolder) end
+    for _, folder in ipairs(syncFolders) do
+        if not isfolder(mainFolder .. "/" .. folder) then makefolder(mainFolder .. "/" .. folder) end
     end
 
-    return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
+    -- If we already have files, load instantly and check for updates in the background.
+    if isfile(commitFile) then
+        if not Taskium.IsSyncing then
+            Taskium.IsSyncing = true
+            task.spawn(function()
+                pcall(function()
+                    local commit = ""
+                    local ok, body = pcall(game.HttpGet, game, commitApiUrl, true)
+                    if ok then
+                        local decodedOk, decoded = pcall(HttpService.JSONDecode, HttpService, body)
+                        local sha = decodedOk and type(decoded) == "table" and decoded.sha
+                        if type(sha) == "string" and #sha == 40 then
+                            commit = sha
+                        end
+                    end
+
+                    if commit == "" then
+                        ok, body = pcall(game.HttpGet, game, repoUrl, true)
+                        local index = ok and body and body:find("currentOid")
+                        local sha = index and body:sub(index + 13, index + 52) or ""
+                        if #sha == 40 then
+                            commit = sha
+                        end
+                    end
+
+                    if commit ~= "" and readCachedCommit() ~= commit then
+                        doSync(commit)
+                    end
+                end)
+                Taskium.IsSyncing = false
+            end)
+        end
+        return -- Return instantly!
+    end
+
+    -- First time setup: Must block and download
+    local commit = ""
+    local ok, body = pcall(game.HttpGet, game, commitApiUrl, true)
+    if ok then
+        local decodedOk, decoded = pcall(HttpService.JSONDecode, HttpService, body)
+        local sha = decodedOk and type(decoded) == "table" and decoded.sha
+        if type(sha) == "string" and #sha == 40 then
+            commit = sha
+        end
+    end
+
+    if commit == "" then
+        ok, body = pcall(game.HttpGet, game, repoUrl, true)
+        local index = ok and body and body:find("currentOid")
+        local sha = index and body:sub(index + 13, index + 52) or ""
+        if #sha == 40 then
+            commit = sha
+        end
+    end
+
+    if commit == "" then
+        commit = "main"
+    end
+
+    doSync(commit)
 end
 
 function Taskium.RestartTaskium()
