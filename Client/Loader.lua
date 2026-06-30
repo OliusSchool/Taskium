@@ -70,43 +70,15 @@ local function executeFile(path)
                 end
             end
 
-            local commit = readCachedCommit()
-            if commit == "" then
-                if TaskiumCommit ~= nil then
-                    commit = TaskiumCommit
-                else
-                    local ok, body = pcall(game.HttpGet, game, commitApiUrl, true)
-                    if ok then
-                        local decodedOk, decoded = pcall(HttpService.JSONDecode, HttpService, body)
-                        local sha = decodedOk and type(decoded) == "table" and decoded.sha
-                        if type(sha) == "string" and #sha == 40 then
-                            TaskiumCommit = sha
-                            commit = sha
-                        end
-                    end
-
-                    if commit == "" then
-                        ok, body = pcall(game.HttpGet, game, repoUrl, true)
-                        local index = ok and body:find("currentOid")
-                        local sha = index and body:sub(index + 13, index + 52) or ""
-                        if #sha == 40 then
-                            TaskiumCommit = sha
-                            commit = sha
-                        end
-                    end
-
-                    if commit == "" then
-                        commit = "main"
-                    end
-                end
-            end
+            local commit = TaskiumCommit or readCachedCommit()
+            if commit == "" then commit = "main" end
 
             local ok, body = pcall(game.HttpGet, game, rawUrl .. commit .. "/" .. repoP, true)
             if not ok or body == "404: Not Found" then
                 warn("Failed to download " .. repoP .. ": " .. tostring(body))
             else
                 writefile(localPath, repoP:find("%.lua$") and (cacheMarker .. body) or body)
-                source = readfile(localPath) or ""
+                source = body
             end
         end
     end
@@ -217,16 +189,21 @@ function Taskium.SyncTaskiumFiles()
 
         if commit == "" then
             ok, body = pcall(game.HttpGet, game, repoUrl, true)
-            local index = ok and body:find("currentOid")
+            local index = ok and body and body:find("currentOid")
             local sha = index and body:sub(index + 13, index + 52) or ""
             if #sha == 40 then
                 TaskiumCommit = sha
                 commit = sha
             end
         end
+
+        if commit == "" then
+            commit = "main"
+            TaskiumCommit = "main"
+        end
     end
 
-    if readCachedCommit() == commit then
+    if readCachedCommit() == commit and commit ~= "main" then
         return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
     end
 
@@ -294,19 +271,18 @@ function Taskium.SyncTaskiumFiles()
 
     local success = true
     local remaining = #files
+    local fileIndex = 1
+    local MAX_WORKERS = 10 -- Limits concurrency to prevent executor HTTP freezing
 
-    -- CONCURRENT DOWNLOADING - Fixed with a counter to prevent infinite hangs
-    for _, file in ipairs(files) do
-        task.spawn(function(f)
+    local function downloadWorker()
+        while true do
+            local idx = fileIndex
+            fileIndex = fileIndex + 1
+            if idx > #files then break end
+
+            local file = files[idx]
             local okThread, err = pcall(function()
-                local repoP = tostring(f or ""):gsub("\\", "/")
-                local marker = "/" .. mainFolder .. "/"
-                local markerIndex = repoP:find(marker, 1, true)
-                if markerIndex then
-                    repoP = repoP:sub(markerIndex + #marker)
-                elseif repoP:sub(1, #mainFolder + 1) == mainFolder .. "/" then
-                    repoP = repoP:sub(#mainFolder + 2)
-                end
+                local repoP = tostring(file or ""):gsub("\\", "/")
                 local localPath = mainFolder .. "/" .. repoP
 
                 local existing = isfile(localPath) and readfile(localPath) or nil
@@ -331,13 +307,18 @@ function Taskium.SyncTaskiumFiles()
                     writefile(localPath, repoP:find("%.lua$") and (cacheMarker .. bodyDl) or bodyDl)
                 end
             end)
-            
+
             if not okThread then
                 warn("Taskium download thread failed: " .. tostring(err))
                 success = false
             end
             remaining = remaining - 1
-        end, file)
+        end
+    end
+
+    local workers = {}
+    for i = 1, math.min(MAX_WORKERS, #files) do
+        table.insert(workers, task.spawn(downloadWorker))
     end
 
     -- Wait for all concurrent downloads to finish
