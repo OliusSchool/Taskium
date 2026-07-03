@@ -19,7 +19,7 @@ Taskium.RepositoryOwner = Taskium.RepositoryOwner or "OliusSchool"
 Taskium.RepositoryName = Taskium.RepositoryName or "Taskium"
 Taskium.RepositoryBranch = Taskium.RepositoryBranch or "main"
 Taskium.RootFolder = Taskium.RootFolder or "Taskium"
-Taskium.GuiFile = Taskium.GuiFile or "GUI/BetaUI.lua"
+Taskium.GuiFile = Taskium.GuiFile or "GUI/TaskUI.lua"
 Taskium.AllowedFolders = {
 	GUI = true,
 	Client = true,
@@ -407,12 +407,24 @@ end
 
 local function LoadCategoryFolder(Folder)
 	local Count = 0
+	local Remaining = 0
+
 	for _, Path in ipairs(Taskium.GetFiles(Folder)) do
 		if Path:match("%.lua$") then
-			ExecuteOptional(Path)
 			Count += 1
+			Remaining += 1
+
+			task.spawn(function()
+				ExecuteOptional(Path)
+				Remaining -= 1
+			end)
 		end
 	end
+
+	while Remaining > 0 do
+		task.wait()
+	end
+
 	return Count
 end
 
