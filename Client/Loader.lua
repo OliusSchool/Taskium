@@ -20,6 +20,26 @@ Taskium.Libraries = Taskium.Libraries or {}
 local FileCache = {}
 local TaskiumCommit = nil
 
+-- NEW: Fast HTTP request function that uses `request` if available for strict timeouts
+-- This prevents the script from hanging for 30+ seconds when GitHub API rate limits you.
+local function httpGet(url)
+    if type(request) == "function" then
+        local ok, res = pcall(request, {
+            Url = url,
+            Method = "GET",
+            Timeout = 5000 -- Fails instantly after 5 seconds instead of hanging
+        })
+        if ok and type(res) == "table" and (res.Success or (res.StatusCode >= 200 and res.StatusCode <= 299)) then
+            return true, tostring(res.Body)
+        end
+        return false, (res and res.StatusCode or "Request failed")
+    else
+        -- Fallback to standard HttpGet if executor lacks custom request function
+        local ok, body = pcall(game.HttpGet, game, url, true)
+        return ok, body
+    end
+end
+
 local function readCachedCommit()
     if not isfile(commitFile) then
         return ""
@@ -76,7 +96,7 @@ local function executeFile(path)
             local commit = TaskiumCommit or readCachedCommit()
             if commit == "" then commit = "main" end
 
-            local ok, body = pcall(game.HttpGet, game, rawUrl .. commit .. "/" .. repoP, true)
+            local ok, body = httpGet(rawUrl .. commit .. "/" .. repoP)
             if not ok or body == "404: Not Found" then
                 warn("Failed to download " .. repoP .. ": " .. tostring(body))
                 FileCache[localPath] = false
@@ -182,7 +202,7 @@ function Taskium.SyncTaskiumFiles()
     if TaskiumCommit ~= nil then
         commit = TaskiumCommit
     else
-        local ok, body = pcall(game.HttpGet, game, commitApiUrl, true)
+        local ok, body = httpGet(commitApiUrl)
         if ok then
             local decodedOk, decoded = pcall(HttpService.JSONDecode, HttpService, body)
             local sha = decodedOk and type(decoded) == "table" and decoded.sha
@@ -193,7 +213,7 @@ function Taskium.SyncTaskiumFiles()
         end
 
         if commit == "" then
-            ok, body = pcall(game.HttpGet, game, repoUrl, true)
+            ok, body = httpGet(repoUrl)
             local index = ok and body and body:find("currentOid")
             local sha = index and body:sub(index + 13, index + 52) or ""
             if #sha == 40 then
@@ -203,7 +223,6 @@ function Taskium.SyncTaskiumFiles()
         end
 
         -- CRITICAL FIX: If the API fails, fall back to the cached commit instead of "main"
-        -- This stops it from redownloading everything just because GitHub API timed out.
         if commit == "" then
             commit = readCachedCommit()
             if commit == "" then
@@ -218,7 +237,14 @@ function Taskium.SyncTaskiumFiles()
         return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
     end
 
-    local ok, body = pcall(game.HttpGet, game, treeApiUrl .. commit .. "?recursive=1", true)
+    -- CRITICAL FIX #2: If we are falling back to "main", the GitHub API is likely rate-limited.
+    -- DO NOT query the tree API (it will hang/timeout). Skip bulk sync and let executeFile() download on-demand.
+    if commit == "main" then
+        warn("Taskium: GitHub API rate-limited or unavailable. Skipping bulk sync. Files will load on-demand.")
+        return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
+    end
+
+    local ok, body = httpGet(treeApiUrl .. commit .. "?recursive=1")
     if not ok then
         warn("Failed to list repository tree: " .. tostring(body))
         return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
@@ -310,7 +336,7 @@ function Taskium.SyncTaskiumFiles()
                     end
                 end
 
-                local okDl, bodyDl = pcall(game.HttpGet, game, rawUrl .. commit .. "/" .. repoP, true)
+                local okDl, bodyDl = httpGet(rawUrl .. commit .. "/" .. repoP)
                 if not okDl or bodyDl == "404: Not Found" then
                     warn("Failed to download " .. repoP .. ": " .. tostring(bodyDl))
                     success = false
