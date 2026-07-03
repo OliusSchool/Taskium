@@ -1,30 +1,22 @@
-local mainFolder = "Taskium"
-local loaderPath = mainFolder .. "/Client/Loader.lua"
+local Environment = type(getgenv) == "function" and getgenv() or _G
+local Taskium = Environment.Taskium or {}
+Environment.Taskium = Taskium
 
--- Inlined ensureFolder
-for _, folder in ipairs({ mainFolder, mainFolder .. "/Client", mainFolder .. "/Games", mainFolder .. "/GUI", mainFolder .. "/Libraries" }) do
-    if not isfolder(folder) then makefolder(folder) end
+Taskium.RepositoryOwner = Taskium.RepositoryOwner or "OliusSchool"
+Taskium.RepositoryName = Taskium.RepositoryName or "Taskium"
+Taskium.RepositoryBranch = Taskium.RepositoryBranch or "main"
+
+local MainUrl = ("https://raw.githubusercontent.com/%s/%s/%s/Client/Main.lua"):format(
+	Taskium.RepositoryOwner,
+	Taskium.RepositoryName,
+	Taskium.RepositoryBranch
+)
+
+local Source = game:HttpGet(MainUrl, true)
+local Chunk, LoadError = loadstring(Source, "@Taskium/Client/Main.lua")
+
+if not Chunk then
+	error(LoadError, 0)
 end
 
-local source = isfile(loaderPath) and readfile(loaderPath) or ""
-
--- Inlined downloadFile
-if source == "" then
-    local okHttp, res = pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/OliusSchool/Taskium/main/Client/Loader.lua", true)
-    end)
-    
-    if okHttp and res and res ~= "404: Not Found" and res ~= "" then
-        writefile(loaderPath, res)
-        source = res
-    else
-        error("Taskium failed to download Loader.lua: " .. tostring(res))
-    end
-end
-
-local chunk, err = loadstring(source, "TaskiumLoader")
-if not chunk then
-    error("Taskium failed to compile Loader.lua: " .. tostring(err))
-end
-
-return chunk()
+return Chunk()
