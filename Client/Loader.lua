@@ -20,21 +20,19 @@ Taskium.Libraries = Taskium.Libraries or {}
 local FileCache = {}
 local TaskiumCommit = nil
 
--- NEW: Fast HTTP request function that uses `request` if available for strict timeouts
--- This prevents the script from hanging for 30+ seconds when GitHub API rate limits you.
+-- Fast HTTP request function with strict timeout to prevent hanging
 local function httpGet(url)
     if type(request) == "function" then
         local ok, res = pcall(request, {
             Url = url,
             Method = "GET",
-            Timeout = 5000 -- Fails instantly after 5 seconds instead of hanging
+            Timeout = 5000 
         })
         if ok and type(res) == "table" and (res.Success or (res.StatusCode >= 200 and res.StatusCode <= 299)) then
             return true, tostring(res.Body)
         end
         return false, (res and res.StatusCode or "Request failed")
     else
-        -- Fallback to standard HttpGet if executor lacks custom request function
         local ok, body = pcall(game.HttpGet, game, url, true)
         return ok, body
     end
@@ -132,8 +130,11 @@ end
 
 local function executeLuaFiles(path)
     if not isfolder(path) then return end
+    
     local output = {}
     local stack = {path}
+    
+    -- 1. Recursively find all .lua files
     while #stack > 0 do
         local currPath = table.remove(stack)
         local files = listfiles(currPath)
@@ -148,8 +149,77 @@ local function executeLuaFiles(path)
         end
     end
     table.sort(output)
+
+    -- 2. Pre-download any missing files IN PARALLEL
+    -- This stops the executor from hanging while loading categories/modules one by one
+    local missingFiles = {}
     for _, file in ipairs(output) do
+        if not isfile(file) then
+            table.insert(missingFiles, file)
+        end
+    end
+
+    if #missingFiles > 0 then
+        local remaining = #missingFiles
+        local fileIndex = 1
+        local MAX_WORKERS = 10
+
+        local function downloadWorker()
+            while true do
+                local idx = fileIndex
+                fileIndex = fileIndex + 1
+                if idx > #missingFiles then break end
+
+                local file = missingFiles[idx]
+                pcall(function()
+                    local repoP = tostring(file or ""):gsub("\\", "/")
+                    local marker = "/" .. mainFolder .. "/"
+                    local markerIndex = repoP:find(marker, 1, true)
+                    if markerIndex then
+                        repoP = repoP:sub(markerIndex + #marker)
+                    elseif repoP:sub(1, #mainFolder + 1) == mainFolder .. "/" then
+                        repoP = repoP:sub(#mainFolder + 2)
+                    end
+                    local localPath = mainFolder .. "/" .. repoP
+
+                    local parentFolder = repoP:match("^(.*)/[^/]+$")
+                    if parentFolder then
+                        local current = mainFolder
+                        for part in parentFolder:gmatch("[^/]+") do
+                            current ..= "/" .. part
+                            if not isfolder(current) then makefolder(current) end
+                        end
+                    end
+
+                    local commit = TaskiumCommit or readCachedCommit()
+                    if commit == "" then commit = "main" end
+
+                    local okDl, bodyDl = httpGet(rawUrl .. commit .. "/" .. repoP)
+                    if okDl and bodyDl ~= "404: Not Found" then
+                        writefile(localPath, repoP:find("%.lua$") and (cacheMarker .. bodyDl) or bodyDl)
+                    end
+                end)
+                remaining = remaining - 1
+            end
+        end
+
+        local workers = {}
+        for i = 1, math.min(MAX_WORKERS, #missingFiles) do
+            table.insert(workers, task.spawn(downloadWorker))
+        end
+
+        while remaining > 0 do
+            task.wait(0.05)
+        end
+    end
+
+    -- 3. Execute the files sequentially, but yield periodically
+    -- This prevents the Roblox thread from freezing while compiling/running modules
+    for i, file in ipairs(output) do
         executeFile(file)
+        if i % 10 == 0 then
+            task.wait() -- Yield every 10 files to let the UI breathe
+        end
     end
 end
 
@@ -222,7 +292,6 @@ function Taskium.SyncTaskiumFiles()
             end
         end
 
-        -- CRITICAL FIX: If the API fails, fall back to the cached commit instead of "main"
         if commit == "" then
             commit = readCachedCommit()
             if commit == "" then
@@ -232,13 +301,11 @@ function Taskium.SyncTaskiumFiles()
         end
     end
 
-    -- If the files are already synced to this commit, DO NOT sync again.
     if readCachedCommit() == commit then
         return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
     end
 
-    -- CRITICAL FIX #2: If we are falling back to "main", the GitHub API is likely rate-limited.
-    -- DO NOT query the tree API (it will hang/timeout). Skip bulk sync and let executeFile() download on-demand.
+    -- Skip bulk sync if API is rate-limited, executeFile will handle it on-demand
     if commit == "main" then
         warn("Taskium: GitHub API rate-limited or unavailable. Skipping bulk sync. Files will load on-demand.")
         return { CreatedFolders = {}, CreatedFiles = {}, MergedFiles = {}, UpdatedFiles = {}, PreservedFiles = {}, FailedFiles = {} }
@@ -309,7 +376,7 @@ function Taskium.SyncTaskiumFiles()
     local success = true
     local remaining = #files
     local fileIndex = 1
-    local MAX_WORKERS = 10 -- Worker pool prevents executor HTTP freezing
+    local MAX_WORKERS = 10
 
     local function downloadWorker()
         while true do
@@ -324,7 +391,7 @@ function Taskium.SyncTaskiumFiles()
 
                 local existing = isfile(localPath) and readfile(localPath) or nil
                 if existing and existing ~= "" and existing:sub(1, #cacheMarker) ~= cacheMarker then
-                    return -- Preserve local edits
+                    return 
                 end
 
                 local parentFolder = repoP:match("^(.*)/[^/]+$")
@@ -411,6 +478,7 @@ function Taskium.RestartTaskium()
 
     executeFile(mainFolder .. "/Games/Universal/Main.lua")
     executeLuaFiles(mainFolder .. "/Games/Universal/Categories")
+    
     if gameFile ~= "Universal/Main.lua" then
         executeFile(mainFolder .. "/Games/" .. gameFile)
         local gameRoot = type(gameFile) == "string" and gameFile:match("^(.+)/Main%.lua$")
