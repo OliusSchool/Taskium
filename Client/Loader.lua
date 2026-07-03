@@ -156,7 +156,7 @@ local function sync()
 end
 
 local function qtp()
-	return queue_on_teleport or queueonteleport or syn and syn.queue_on_teleport or fluxus and fluxus.queue_on_teleport
+	return queue_on_teleport
 end
 
 function Taskium.QueueTaskiumOnTeleport()
@@ -214,7 +214,7 @@ function Taskium.RestartTaskium()
 	end
 
 	local cfg = exec(folder .. "/Client/Config.lua")
-	local api = exec(folder .. "/GUI/TaskUI.lua")
+	local api = exec(folder .. "/GUI/BetaUI.lua")
 	if not api then
 		return warn("Taskium bootstrap could not find Taskium/GUI/TaskUI.lua")
 	end
